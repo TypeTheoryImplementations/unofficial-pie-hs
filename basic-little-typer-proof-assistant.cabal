@@ -1,0 +1,72 @@
+cabal-version:      3.4
+
+name:               basic-little-typer-proof-assistant
+
+version:            0.1.0.0
+
+license:            BSD-3-Clause
+
+license-file:       LICENSE
+
+author:             LincolnSand
+
+maintainer:         sandlincoln@gmail.com
+
+category:           Text
+build-type:         Simple
+
+extra-doc-files:    CHANGELOG.md
+
+common warnings
+    ghc-options: -Wall
+
+library
+    import:           warnings
+
+    exposed-modules:  Parser
+
+    build-depends:
+        base ^>=4.20.0.0,
+        megaparsec >= 9.0,
+        parser-combinators >= 1.0,
+        containers >= 0.7,
+        mtl >= 2.2.2
+
+    hs-source-dirs:   src
+
+    default-language: GHC2024
+
+executable basic-little-typer-proof-assistant
+    import:           warnings
+
+    main-is:          Main.hs
+
+    build-depends:
+        base ^>=4.20.0.0,
+        basic-little-typer-proof-assistant
+
+    hs-source-dirs:   app
+
+    default-language: GHC2024
+
+test-suite basic-little-typer-proof-assistant-test
+    import:           warnings
+
+    default-language: GHC2024
+
+    type:             exitcode-stdio-1.0
+
+    hs-source-dirs:   test
+
+    main-is:          Spec.hs
+
+    build-depends:
+        base ^>=4.20.0.0,
+        megaparsec >= 9.0,
+        hspec,
+        hspec-discover,
+        basic-little-typer-proof-assistant
+
+    other-modules:
+        ParsingSpec,
+        AlphaConversionSpec
