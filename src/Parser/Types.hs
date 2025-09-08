@@ -5,6 +5,7 @@ type Name = String -- [a-zA-Z] or [0-9] or '-' (first character must be a letter
 data The = The Term Term
     deriving (Eq, Show)
 
+-- NOTE: Preface all constructors with `Term`
 data Term
     = TermThe The
     | TermVar Name
@@ -51,6 +52,6 @@ data Term
     | TermAbsurd
     | TermIndAbsurd Term Term
     | TermU
+    | TermType
     deriving (Eq, Show)
-
 

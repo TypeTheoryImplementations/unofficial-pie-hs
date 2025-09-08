@@ -26,7 +26,8 @@ library
     exposed-modules:
         Parser.Types,
         Parser.Parser,
-        TypingRules
+        Typing.Equivalence,
+        Typing.TypingRules
 
     build-depends:
         base ^>=4.20.0.0,

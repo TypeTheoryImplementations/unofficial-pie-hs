@@ -9,6 +9,8 @@ import qualified Data.Void as Void
 
 type Parser = Parsec Void.Void String
 
+-- NOTE: Perface all parsing functions with `parse`
+
 parseTopLevel :: Parser Term
 parseTopLevel = (skipMany ParsecChar.spaceChar) *> parseTerm <* eof
 
