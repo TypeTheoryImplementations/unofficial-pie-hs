@@ -1,7 +1,7 @@
-module Parser.Parser(parseTopLevel, Term(..), Name, The(..)) where
+module Parser.Parser(parseTopLevel, Term(..), Name, The(..), Context) where
 
 import Text.Megaparsec
-import Parser.Types
+import Parser.SyntacticTypes
 import qualified Text.Megaparsec.Char as ParsecChar
 import qualified Text.Megaparsec.Char.Lexer as CharLexer
 

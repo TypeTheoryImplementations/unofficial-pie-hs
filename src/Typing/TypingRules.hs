@@ -12,8 +12,6 @@ import Parser.Parser
 -- Γ ⊢ e synth -> (the c_t c_e)         From e, the type c_t can be synthesized, resulting in c_e.
 -- Γ ⊢ c_1 ≡ c_2 : c_t                  c_1 is the same c_t as c_2.
 
-type Context = [(Name, Term)]
-
 unused :: Name -> Name
 unused = id
 
@@ -31,7 +29,7 @@ typingLookup (ctxHead : ctxTail) x
     | fst ctxHead == x  = Just $ snd ctxHead
     | otherwise         = typingLookup ctxTail x
 
-typingSynth:: Context -> Term -> Maybe The
+typingSynth :: Context -> Term -> Maybe The
 typingSynth ctx (TermVar x) = do -- Hypothesis
     xType <- typingLookup ctx x
     return $ The xType (TermVar x)

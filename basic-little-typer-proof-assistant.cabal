@@ -24,10 +24,11 @@ library
     import:           warnings
 
     exposed-modules:
-        Parser.Types,
+        Parser.SyntacticTypes,
         Parser.Parser,
-        Typing.Equivalence,
-        Typing.TypingRules
+        Typing.ActualSemTypes,
+        Typing.TypingRules,
+        Typing.Normalization
 
     build-depends:
         base ^>=4.20.0.0,
