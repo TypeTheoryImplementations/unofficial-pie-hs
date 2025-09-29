@@ -1,17 +1,18 @@
 module Typing.Normalization where
 
-import Typing.ActualSemTypes
+import Typing.SemanticTypes
 import Parser.SyntacticTypes
 
 -- NOTE: We make use of Haskell's built-in laziness. So we call the function directly and get the Value, but Haskell will automagically memoize it
 --     NOTE: This allows use to get rid of all the box and DELAY boilerplate/logic that is present in the reference implementation which is written in Racket
-later :: Env -> Term -> Value
-later env expr = v where v = reflect env expr
+
+extendEnv :: Env -> Name -> Value -> Env
+extendEnv env x v = ((x, v):env)
 
 valOfClosure :: Closure -> Value -> Value
 valOfClosure closure val =
     case closure of
-        (FO_CLOS env argName expr) -> reflect ((argName, val):env) expr
+        (FO_CLOS env argName expr) -> reflect (extendEnv env argName val) expr
         (HO_CLOS fun) -> fun val
 
 doAp :: Value -> Value -> Value
@@ -270,7 +271,6 @@ doIndVec lenVal vecVal motiveVal baseVal stepVal =
                         motiveVal)
                     (THE (doAp (doAp motiveVal ZERO) VECNIL) baseVal)
                     (THE (indVecStepType elementTypeVal motiveVal) stepVal))
--- TODO: What about `N_Ind_Vec1`? It's in Neutral, but it seems to never be implemented in the reference impl???
         _ -> error "There is a logic error in the implementation where `doIndVec` has been called on an invalid target"
 
 doIndEither :: Value -> Value -> Value -> Value -> Value
@@ -307,83 +307,205 @@ reflect env (TermThe (The _ expr)) =
 reflect _ TermU = UNIVERSE
 reflect _ TermNat = NAT
 reflect _ TermNatZero = ZERO
-reflect env (TermNatAdd1 n) = ADD1 (later env n)
-reflect env (TermPi (x, aType) bType) =
-    let aTypeVal = later env aType
+reflect env (TermNatAdd1 n) = ADD1 (reflect env n)
+reflect env (TermPi x aType bType) =
+    let aTypeVal = reflect env aType
     in PI x aTypeVal (FO_CLOS env x bType)
 reflect env (TermLambda x bType) =
     LAM x (FO_CLOS env x bType)
 reflect env (TermWhichNat target (The baseType base) step) =
-    doWhichNat (later env target) (later env baseType) (later env base) (later env step)
+    doWhichNat (reflect env target) (reflect env baseType) (reflect env base) (reflect env step)
 reflect env (TermIterNat target (The baseType base) step) =
-    doIterNat (later env target) (later env baseType) (later env base) (later env step)
+    doIterNat (reflect env target) (reflect env baseType) (reflect env base) (reflect env step)
 reflect env (TermRecNat target (The baseType base) step) =
-    doRecNat (later env target) (later env baseType) (later env base) (later env step)
+    doRecNat (reflect env target) (reflect env baseType) (reflect env base) (reflect env step)
 reflect env (TermIndNat target motive base step) =
-    doIndNat (later env target) (later env motive) (later env base) (later env step)
+    doIndNat (reflect env target) (reflect env motive) (reflect env base) (reflect env step)
 reflect _ (TermAtom) = ATOM
-reflect env (TermSigma (x, aType) dType) =
-    let aTypeVal = later env aType
+reflect env (TermSigma x aType dType) =
+    let aTypeVal = reflect env aType
     in SIGMA x aTypeVal (FO_CLOS env x dType)
 reflect env (TermCons a d) =
-    CONS (later env a) (later env d)
+    CONS (reflect env a) (reflect env d)
 reflect env (TermCar p) =
-    doCar (later env p)
+    doCar (reflect env p)
 reflect env (TermCdr p) =
-    doCdr (later env p)
+    doCdr (reflect env p)
 reflect _ (TermAtomLiteral a) = QUOTE a
 reflect _ TermTrivial = TRIVIAL
 reflect _ TermTrivialSole = SOLE
 reflect _ TermListNil = NIL
 reflect env (TermListColonColon h t) =
-    LIST_COLON_COLON (later env h) (later env t)
+    LIST_COLON_COLON (reflect env h) (reflect env t)
 reflect env (TermList elementType) =
-    LIST (later env elementType)
+    LIST (reflect env elementType)
 reflect env (TermIndList target motive base step) =
-    doIndList (later env target) (later env motive) (later env base) (later env step)
+    doIndList (reflect env target) (reflect env motive) (reflect env base) (reflect env step)
 reflect env (TermRecList target (The baseType base) step) =
-    doRecList (later env target) (later env baseType) (later env base) (later env step)
+    doRecList (reflect env target) (reflect env baseType) (reflect env base) (reflect env step)
 reflect _ TermAbsurd = ABSURD
 reflect env (TermIndAbsurd target motive) =
-    doIndAbsurd (later env target) (later env motive)
+    doIndAbsurd (reflect env target) (reflect env motive)
 reflect env (TermEq aType from to) =
-    EQUAL (later env aType) (later env from) (later env to)
+    EQUAL (reflect env aType) (reflect env from) (reflect env to)
 reflect env (TermEqSame e) =
-    SAME (later env e)
+    SAME (reflect env e)
 reflect env (TermReplace target motive base) =
-    doReplace (later env target) (later env motive) (later env base)
+    doReplace (reflect env target) (reflect env motive) (reflect env base)
 reflect env (TermTrans p1 p2) =
-    doTrans (later env p1) (later env p2)
+    doTrans (reflect env p1) (reflect env p2)
 reflect env (TermCong p1 p2 p3) =
-    doCong (later env p1) (later env p2) (later env p3)
+    doCong (reflect env p1) (reflect env p2) (reflect env p3)
 reflect env (TermSymm p) =
-    doSymm (later env p)
+    doSymm (reflect env p)
 reflect env (TermIndEq target motive base) =
-    doIndEq (later env target) (later env motive) (later env base)
+    doIndEq (reflect env target) (reflect env motive) (reflect env base)
 reflect env (TermVec elementType len) =
-    VEC (later env elementType) (later env len)
+    VEC (reflect env elementType) (reflect env len)
 reflect _ TermVecNil = VECNIL
 reflect env (TermVecColonColon h t) =
-    VEC_COLON_COLON (later env h) (later env t)
+    VEC_COLON_COLON (reflect env h) (reflect env t)
 reflect env (TermHead es) =
-    doHead (later env es)
+    doHead (reflect env es)
 reflect env (TermTail es) =
-    doTail (later env es)
+    doTail (reflect env es)
 reflect env (TermIndVec len es mot base step) =
-    doIndVec (later env len) (later env es) (later env mot) (later env base) (later env step)
+    doIndVec (reflect env len) (reflect env es) (reflect env mot) (reflect env base) (reflect env step)
 reflect env (TermEither left right) =
-    EITHER (later env left) (later env right)
+    EITHER (reflect env left) (reflect env right)
 reflect env (TermEitherLeft left) =
-    LEFT (later env left)
+    LEFT (reflect env left)
 reflect env (TermEitherRight right) =
-    RIGHT (later env right)
+    RIGHT (reflect env right)
 reflect env (TermIndEither target motive left right) =
-    doIndEither (later env target) (later env motive) (later env left) (later env right)
+    doIndEither (reflect env target) (reflect env motive) (reflect env left) (reflect env right)
 reflect env (TermApplication rator rand) =
-    doAp (later env rator) (later env rand)
+    doAp (reflect env rator) (reflect env rand)
 reflect env (TermVar x) =
     varVal env x
--- TermType is only used internally for type checking and should never be passed to normalization in any context
-reflect _ TermType = error "TermType is not a valid term"
 
+extendRenaming :: Renaming -> Name -> Name -> Renaming
+extendRenaming r from to = ((from, to):r)
 
+valInCtx :: Context -> Term -> Value
+valInCtx ctx expr = reflect (ctxToEnv ctx) expr
+
+ctxToEnv :: Context -> Env
+ctxToEnv ((x, Def _ val):ctxTail) =
+    [(x, val)] ++ (ctxToEnv ctxTail)
+ctxToEnv ((x, Free typeVal):ctxTail) =
+    [(x, NEU typeVal (N_Var x))] ++ (ctxToEnv ctxTail)
+ctxToEnv ((_, Claim _):ctxTail) =
+    ctxToEnv ctxTail
+ctxToEnv [] = []
+
+readBackType :: Context -> Value -> Term
+readBackType _ UNIVERSE = TermU
+readBackType _ NAT = TermNat
+readBackType ctx (PI x xTypeVal clos) =
+    let xTypeTerm       = readBackType ctx xTypeVal
+        xPrime          = fresh ctx x
+        ctxUnderXPrime  = bindFree ctx xPrime xTypeVal
+    in (TermPi xPrime xTypeTerm (readBackType ctxUnderXPrime (valOfClosure clos (NEU xTypeVal (N_Var xPrime)))))
+readBackType _ ATOM = TermAtom
+readBackType ctx (SIGMA x xTypeVal clos) =
+    let xTypeTerm       = readBackType ctx xTypeVal
+        xPrime          = fresh ctx x
+        ctxUnderXPrime  = bindFree ctx xPrime xTypeVal
+    in (TermSigma xPrime xTypeTerm (readBackType ctxUnderXPrime (valOfClosure clos (NEU xTypeVal (N_Var xPrime)))))
+readBackType _ TRIVIAL = TermTrivial
+readBackType ctx (LIST eTypeVal) = (TermList (readBackType ctx eTypeVal))
+readBackType _ ABSURD = TermAbsurd
+readBackType ctx (EQUAL xTypeVal fromVal toVal) =
+    TermEq (readBackType ctx xTypeVal) (readBack ctx xTypeVal fromVal) (readBack ctx xTypeVal toVal)
+readBackType ctx (VEC eTypeVal lenVal) =
+    TermVec (readBackType ctx eTypeVal) (readBack ctx NAT lenVal)
+readBackType ctx (EITHER leftVal rightVal) =
+    TermEither (readBackType ctx leftVal) (readBackType ctx rightVal)
+readBackType ctx (NEU UNIVERSE ne) =
+    readBackNeutral ctx ne
+readBackType _ _ = error "There is a logic error in the implementation where `readBackType` has been called on a `Value` that is not a type"
+
+readBack :: Context -> Value -> Value -> Term
+readBack ctx UNIVERSE v = readBackType ctx v
+readBack _ NAT ZERO = TermNatZero
+readBack ctx NAT (ADD1 nMinus1) =
+    TermNatAdd1 (readBack ctx NAT nMinus1)
+readBack ctx (PI x xType clos) f =
+    let y = case f of
+                (LAM yPrime _) -> yPrime
+                _ -> x
+        xPrime = fresh ctx y
+        neuVal = NEU xType (N_Var xPrime)
+    in (TermLambda xPrime (readBack (bindFree ctx xPrime xType) (valOfClosure clos neuVal) (doAp f neuVal)))
+readBack ctx (SIGMA _ xType clos) pVal =
+    let car = doCar pVal
+    in (TermCons (readBack ctx xType car) (readBack ctx (valOfClosure clos car) (doCdr pVal)))
+readBack _ ATOM (QUOTE a) = TermAtomLiteral a
+readBack _ TRIVIAL _ = TermTrivialSole -- NOTE: η-expansion
+readBack _ (LIST _) NIL = TermListNil
+readBack ctx (LIST eType) (LIST_COLON_COLON h t) =
+    TermListColonColon (readBack ctx eType h) (readBack ctx (LIST eType) t)
+-- NOTE: This is apparently half of an η law with the other half being in `alphaEquiv`???
+readBack ctx ABSURD (NEU _ ne) =
+    TermThe $ The TermAbsurd (readBackNeutral ctx ne)
+readBack ctx (EQUAL xType _ _) (SAME v) = TermEqSame (readBack ctx xType v)
+readBack _ (VEC _ ZERO) _ = TermVecNil
+readBack ctx (VEC xType (ADD1 lenMinus1)) (VEC_COLON_COLON h t) =
+    TermVecColonColon (readBack ctx xType h) (readBack ctx (VEC xType lenMinus1) t)
+readBack ctx (EITHER leftType _) (LEFT leftVal) =
+    TermEitherLeft (readBack ctx leftType leftVal)
+readBack ctx (EITHER _ rightType) (RIGHT rightVal) =
+    TermEitherRight (readBack ctx rightType rightVal)
+readBack ctx _ (NEU _ ne) = readBackNeutral ctx ne
+readBack _ _ _ = error "There is a logic error in the implementation where `readBack` has been called on a `Value` that is not a non-neutral non-type value"
+
+readBackNeutral :: Context -> Neutral -> Term
+readBackNeutral ctx (N_Which_Nat target (THE baseTypeVal baseVal) (THE stepTypeVal stepVal)) =
+    TermWhichNat (readBackNeutral ctx target) (The (readBackType ctx baseTypeVal) (readBack ctx baseTypeVal baseVal)) (readBack ctx stepTypeVal stepVal)
+readBackNeutral ctx (N_Iter_Nat target (THE baseTypeVal baseVal) (THE stepTypeVal stepVal)) =
+    TermIterNat (readBackNeutral ctx target) (The (readBackType ctx baseTypeVal) (readBack ctx baseTypeVal baseVal)) (readBack ctx stepTypeVal stepVal)
+readBackNeutral ctx (N_Rec_Nat target (THE baseTypeVal baseVal) (THE stepTypeVal stepVal)) =
+    TermRecNat (readBackNeutral ctx target) (The (readBackType ctx baseTypeVal) (readBack ctx baseTypeVal baseVal)) (readBack ctx stepTypeVal stepVal)
+readBackNeutral ctx (N_Ind_Nat target (THE motiveTypeVal motiveVal) (THE baseTypeVal baseVal) (THE stepTypeVal stepVal)) =
+    TermIndNat (readBackNeutral ctx target) (readBack ctx motiveTypeVal motiveVal) (readBack ctx baseTypeVal baseVal) (readBack ctx stepTypeVal stepVal)
+readBackNeutral ctx (N_Car target) =
+    TermCar (readBackNeutral ctx target)
+readBackNeutral ctx (N_Cdr target) =
+    TermCdr (readBackNeutral ctx target)
+readBackNeutral ctx (N_Ind_List target (THE motiveTypeVal motiveVal) (THE baseTypeVal baseVal) (THE stepTypeVal stepVal)) =
+    TermIndList (readBackNeutral ctx target) (readBack ctx motiveTypeVal motiveVal) (readBack ctx baseTypeVal baseVal) (readBack ctx stepTypeVal stepVal)
+readBackNeutral ctx (N_Rec_List target (THE baseTypeVal baseVal) (THE stepTypeVal stepVal)) =
+    TermRecList (readBackNeutral ctx target) (The (readBackType ctx baseTypeVal) (readBack ctx baseTypeVal baseVal)) (readBack ctx stepTypeVal stepVal)
+-- NOTE: This is apparently half of an η law with the other half being in `alphaEquiv`???
+readBackNeutral ctx (N_Ind_Absurd target (THE typeVal val)) =
+    TermIndAbsurd (TermThe (The TermAbsurd (readBackNeutral ctx target))) (readBack ctx typeVal val)
+readBackNeutral ctx (N_Replace target (THE motiveTypeVal motiveVal) (THE baseTypeVal baseVal)) =
+    TermReplace (readBackNeutral ctx target) (readBack ctx motiveTypeVal motiveVal) (readBack ctx baseTypeVal baseVal)
+readBackNeutral ctx (N_Trans12 p1 p2) =
+    TermTrans (readBackNeutral ctx p1) (readBackNeutral ctx p2)
+readBackNeutral ctx (N_Trans1 ne (THE t v)) =
+    TermTrans (readBackNeutral ctx ne) (readBack ctx t v)
+readBackNeutral ctx (N_Trans2 (THE t v) ne) =
+    TermTrans (readBack ctx t v) (readBackNeutral ctx ne)
+readBackNeutral ctx (N_Cong ne (THE (PI y yTypeVal clos) val)) =
+    TermCong (readBackNeutral ctx ne) (readBackType ctx (valOfClosure clos ABSURD)) (readBack ctx (PI y yTypeVal clos) val)
+readBackNeutral ctx (N_Symm ne) =
+    TermSymm (readBackNeutral ctx ne)
+readBackNeutral ctx (N_Ind_Eq ne (THE motiveTypeVal motiveVal) (THE baseTypeVal baseVal)) =
+    TermIndEq (readBackNeutral ctx ne) (readBack ctx motiveTypeVal motiveVal) (readBack ctx baseTypeVal baseVal)
+readBackNeutral ctx (N_Head ne) =
+    TermHead (readBackNeutral ctx ne)
+readBackNeutral ctx (N_Tail ne) =
+    TermTail (readBackNeutral ctx ne)
+readBackNeutral ctx (N_Ind_Vec2 (THE lenTypeVal lenVal) es (THE motiveTypeVal motiveVal) (THE baseTypeVal baseVal) (THE stepTypeVal stepVal)) =
+    TermIndVec (readBack ctx lenTypeVal lenVal) (readBackNeutral ctx es) (readBack ctx motiveTypeVal motiveVal) (readBack ctx baseTypeVal baseVal) (readBack ctx stepTypeVal stepVal)
+readBackNeutral ctx (N_Ind_Vec12 len es (THE motiveTypeVal motiveVal) (THE baseTypeVal baseVal) (THE stepTypeVal stepVal)) =
+    TermIndVec (readBackNeutral ctx len) (readBackNeutral ctx es) (readBack ctx motiveTypeVal motiveVal) (readBack ctx baseTypeVal baseVal) (readBack ctx stepTypeVal stepVal)
+readBackNeutral ctx (N_Ind_Either target (THE motiveTypeVal motiveVal) (THE leftTypeVal leftVal) (THE rightTypeVal rightVal)) =
+    TermIndEither (readBackNeutral ctx target) (readBack ctx motiveTypeVal motiveVal) (readBack ctx leftTypeVal leftVal) (readBack ctx rightTypeVal rightVal)
+readBackNeutral ctx (N_Ap target (THE argTypeVal argVal)) =
+    TermApplication (readBackNeutral ctx target) (readBack ctx argTypeVal argVal)
+readBackNeutral _ (N_Var x) =
+    TermVar x
+readBackNeutral _ _ = error "There is a logic error in the implementation where `readBackNeutral` has been called on a Neutral with an ill-formed type annotation"

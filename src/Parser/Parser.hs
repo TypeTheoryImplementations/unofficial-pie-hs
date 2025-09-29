@@ -1,4 +1,4 @@
-module Parser.Parser(parseTopLevel, Term(..), Name, The(..), Context) where
+module Parser.Parser(parseTopLevel, Term(..), Name, The(..)) where
 
 import Text.Megaparsec
 import Parser.SyntacticTypes
@@ -107,7 +107,7 @@ parseTermSigma = parseParens $ do
     _ <- parseSymbol "Sigma"
     paramList <- parseParens $ parseSingleParam
     body <- parseTerm
-    return $ TermSigma paramList body
+    return $ TermSigma (fst paramList) (snd paramList) body
 
 parseTermCons :: Parser Term
 parseTermCons = parseParens $ do
@@ -133,7 +133,7 @@ parseTermPi = parseParens $ do
     _ <- parseSymbol "Pi"
     paramList <- parseParens $ parseSingleParam
     body <- parseTerm
-    return $ TermPi paramList body
+    return $ TermPi (fst paramList) (snd paramList) body
 
 parseTermLambda :: Parser Term
 parseTermLambda = parseParens $ do
@@ -363,5 +363,3 @@ parseTermIndAbsurd = parseParens $ do
 
 parseTermU :: Parser Term
 parseTermU = TermU <$ parseSymbol "U"
-
-

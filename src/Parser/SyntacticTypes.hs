@@ -1,8 +1,10 @@
-module Parser.SyntacticTypes(Term(..), Name, The(..), Context) where
-
-type Context = [(Name, Term)]
+module Parser.SyntacticTypes where
 
 type Name = String -- [a-zA-Z] or [0-9] or '-' (first character must be a letter); kebab-case allowed
+
+type Renaming = [(Name, Name)]
+
+data ConvertSuccess = ConvertSuccess
 
 data The = The Term Term
     deriving (Eq, Show)
@@ -16,12 +18,12 @@ data Term
     | TermAtom
     | TermAtomLiteral String
 
-    | TermSigma (Name, Term) Term
+    | TermSigma Name Term Term
     | TermCons Term Term
     | TermCar Term
     | TermCdr Term
 
-    | TermPi (Name, Term) Term
+    | TermPi Name Term Term
     | TermLambda Name Term
     | TermApplication Term Term
 
@@ -71,8 +73,4 @@ data Term
     | TermIndAbsurd Term Term
 
     | TermU
-
-    -- NOTE: TermType is a fake term that is used only for internal tagging within type checking
-    | TermType
     deriving (Eq, Show)
-
