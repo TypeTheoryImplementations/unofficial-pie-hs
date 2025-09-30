@@ -1,18 +1,35 @@
-module Parser.Parser(parseTopLevel, Term(..), Name, The(..)) where
+module Parser.Parser(parseTopLevel, processFile, Term(..), Name, The(..)) where
 
 import Text.Megaparsec
 import Parser.SyntacticTypes
+import Typing.SemanticTypes
+import Typing.Normalization
+import Typing.TypingRules
 import qualified Text.Megaparsec.Char as ParsecChar
 import qualified Text.Megaparsec.Char.Lexer as CharLexer
 
 import qualified Data.Void as Void
+import Control.Monad
 
 type Parser = Parsec Void.Void String
 
--- NOTE: Perface all parsing functions with `parse`
+-- NOTE: Preface all parsing functions with `parse`
 
-parseTopLevel :: Parser Term
-parseTopLevel = (skipMany ParsecChar.spaceChar) *> parseTerm <* eof
+type TopLevelDecls = [TopLevelDecl]
+
+reservedKeywords :: [Name]
+reservedKeywords = [
+    "The", "Atom", "Sigma", "cons", "car", "cdr", "Pi", "lambda", "Nat", "zero", "add1", "which-Nat",
+    "iter-Nat", "rec-Nat", "ind-Nat", "List", "nil", "rec-List", "ind-List", "Vec", "vecnil", "head", "tail",
+    "ind-Vec", "same", "symm", "cong", "replace", "trans", "Either", "left", "right", "ind-Either",
+    "Trivial", "sole", "Absurd", "ind-Absurd", "U"]
+
+parseTopLevelDecl :: Parser TopLevelDecl
+parseTopLevelDecl = (skipMany ParsecChar.spaceChar) *> parseTopLevelBinder
+
+-- NOTE: Entry point into parser
+parseTopLevel :: Parser TopLevelDecls
+parseTopLevel = some parseTopLevelDecl <* eof
 
 parseLexeme :: Parser a -> Parser a
 parseLexeme = CharLexer.lexeme ParsecChar.space
@@ -24,7 +41,11 @@ parseParens :: Parser a -> Parser a
 parseParens = between (parseSymbol "(") (parseSymbol ")")
 
 parseIdentifier :: Parser String
-parseIdentifier = parseLexeme $ (:) <$> ParsecChar.letterChar <*> many (ParsecChar.alphaNumChar <|> ParsecChar.char '-')
+parseIdentifier = do
+    ident <- parseLexeme $ (:) <$> ParsecChar.letterChar <*> many (ParsecChar.alphaNumChar <|> ParsecChar.char '-')
+    if ident `elem` reservedKeywords
+        then fail $ "keyword " ++ (show ident) ++ " cannot be used as an identifier"
+        else return ident
 
 parseThe :: Parser The
 parseThe = parseParens $ do
@@ -363,3 +384,106 @@ parseTermIndAbsurd = parseParens $ do
 
 parseTermU :: Parser Term
 parseTermU = TermU <$ parseSymbol "U"
+
+
+data TopLevelDecl
+    = TopLevelClaim Name Term
+    | TopLevelDef Name Term
+    | TopLevelCheckSame Term Term Term
+    | TopLevelFree Term
+
+parseTopLevelBinder :: Parser TopLevelDecl
+parseTopLevelBinder =
+        try parseClaim
+    <|> try parseDef
+    <|> try parseCheckSame
+    <|>     TopLevelFree <$> parseTerm
+
+parseClaim :: Parser TopLevelDecl
+parseClaim = parseParens $ do
+    _ <- parseSymbol "claim"
+    x <- parseIdentifier
+    xType <- parseTerm
+    return $ TopLevelClaim x xType
+
+parseDef :: Parser TopLevelDecl
+parseDef = parseParens $ do
+    _ <- parseSymbol "define"
+    x <- parseIdentifier
+    xDef <- parseTerm
+    return $ TopLevelDef x xDef
+
+parseCheckSame :: Parser TopLevelDecl
+parseCheckSame = parseParens $ do
+    _ <- parseSymbol "check-same"
+    xType <- parseTerm
+    x1 <- parseTerm
+    x2 <- parseTerm
+    return $ TopLevelCheckSame xType x1 x2
+
+
+initCtx :: Context
+initCtx = []
+
+initRename :: Renaming
+initRename = []
+
+-- NOTE: Entry point into type checker
+processFile :: TopLevelDecls -> Maybe Context
+processFile decls = foldM processDecl initCtx decls
+
+processDecl :: Context -> TopLevelDecl -> Maybe Context
+processDecl ctx (TopLevelClaim name ty) = addClaim ctx name ty
+processDecl ctx (TopLevelDef name e) = addDef ctx name e
+processDecl ctx (TopLevelCheckSame ty e1 e2) = checkSame ctx ty e1 e2 >> return ctx
+processDecl ctx (TopLevelFree e) = typingSynth ctx initRename e >> return ctx
+
+
+addClaim :: Context -> Name -> Term -> Maybe Context
+addClaim ctx x ty = do
+    _ <- notUsed ctx x
+    tyOut <- isType ctx initRename ty
+    return ((x, Claim (valInCtx ctx tyOut)):ctx)
+
+addDef :: Context -> Name -> Term -> Maybe Context
+addDef ctx x expr = do
+    typeVal <- getClaim ctx x
+    exprOut <- typingCheck ctx initRename expr typeVal
+    return $ bindVal (removeClaim x ctx) x typeVal (valInCtx ctx exprOut)
+
+removeClaim :: Name -> Context -> Context
+removeClaim _ [] = []
+removeClaim x ((y, b):ctxTail)
+    | x == y =
+        case b of
+            Claim _ -> removeClaim x ctxTail
+            _ -> error "There is a logic error in the implementation where `removeClaim` has been called with duplicate definitions in the context"
+    | otherwise = (y, b) : removeClaim x ctxTail
+
+checkSame :: Context -> Term -> Term -> Term -> Maybe ConvertSuccess
+checkSame ctx ty a b = do
+    tyOut <- isType ctx initRename ty
+    let tyVal = valInCtx ctx tyOut
+    aOut <- typingCheck ctx initRename a tyVal
+    bOut <- typingCheck ctx initRename b tyVal
+    let aVal = valInCtx ctx aOut
+    let bVal = valInCtx ctx bOut
+    convert ctx tyVal aVal bVal
+
+notUsed :: Context -> Name -> Maybe ConvertSuccess
+notUsed [] _ = Just ConvertSuccess
+notUsed ((y, _):ctxTail) x =
+    if x == y then Nothing else notUsed ctxTail x
+
+getClaim :: Context -> Name -> Maybe Value
+getClaim [] _ = Nothing
+getClaim ((y, Def _ _):_) x
+    | x == y = Nothing -- x is already defined
+getClaim ((y, Claim typeVal):_) x
+    | x == y = Just typeVal
+getClaim (_:ctxTail) x = getClaim ctxTail x
+
+bindVal :: Context -> Name -> Value -> Value -> Context
+bindVal ctx x typeVal val = ((x, Def typeVal val):ctx)
+
+
