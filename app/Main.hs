@@ -1,5 +1,9 @@
 module Main where
 
+import InterfaceIO.Interface
+
 main :: IO ()
 main = do
-  putStrLn "Hello, Haskell!"
+    putStrLn "Input filename:"
+    fp <- getLine
+    typeCheckFile fp

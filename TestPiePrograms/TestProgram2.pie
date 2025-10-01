@@ -1,0 +1,13 @@
+(claim refl-add1-zero (= Nat (add1 zero) (add1 zero)))
+(define refl-add1-zero (same (add1 zero)))
+
+(claim symm-Nat
+  (Pi (x Nat) (Pi (y Nat) (Pi (p (= Nat x y)) (= Nat y x)))))
+(define symm-Nat (lambda (x) (lambda (y) (lambda (p) (symm p)))))
+
+(claim trans-Nat
+  (Pi (x Nat) (Pi (y Nat) (Pi (z Nat)
+    (Pi (p (= Nat x y)) (Pi (q (= Nat y z)) (= Nat x z)))))))
+(define trans-Nat
+  (lambda (x) (lambda (y) (lambda (z)
+    (lambda (p) (lambda (q) (trans p q)))))))

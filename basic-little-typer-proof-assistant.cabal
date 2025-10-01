@@ -24,6 +24,7 @@ library
     import:           warnings
 
     exposed-modules:
+        InterfaceIO.Interface,
         Parser.SyntacticTypes,
         Parser.Parser,
         Typing.SemanticTypes,

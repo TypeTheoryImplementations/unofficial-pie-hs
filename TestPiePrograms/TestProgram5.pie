@@ -1,0 +1,4 @@
+(claim const-Nat (Pi (x Nat) (Pi (y Nat) Nat)))
+(define const-Nat (lambda (x) (lambda (y) x)))
+
+(check-same Nat ((const-Nat zero) (add1 zero)) zero)

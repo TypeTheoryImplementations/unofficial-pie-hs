@@ -126,7 +126,7 @@ parseTermAtomLiteral = do
 parseTermSigma :: Parser Term
 parseTermSigma = parseParens $ do
     _ <- parseSymbol "Sigma"
-    paramList <- parseParens $ parseSingleParam
+    paramList <- parseSingleParam
     body <- parseTerm
     return $ TermSigma (fst paramList) (snd paramList) body
 
@@ -152,7 +152,7 @@ parseTermCdr = parseParens $ do
 parseTermPi :: Parser Term
 parseTermPi = parseParens $ do
     _ <- parseSymbol "Pi"
-    paramList <- parseParens $ parseSingleParam
+    paramList <- parseSingleParam
     body <- parseTerm
     return $ TermPi (fst paramList) (snd paramList) body
 
