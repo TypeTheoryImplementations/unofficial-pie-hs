@@ -3,14 +3,10 @@ module InterfaceIO.Interface where
 import Parser.Parser
 import Text.Megaparsec (parse, errorBundlePretty)
 
-typeCheckText :: String -> IO ()
-typeCheckText src =
-    case parse parseTopLevel "<input>" src of
-        Left err -> putStr $ errorBundlePretty err
-        Right decls ->
-            case processFile decls of
-                Nothing -> putStrLn "Type Error."
-                Just _ -> putStrLn "Program Ok."
+printAndCheckFile :: FilePath -> IO ()
+printAndCheckFile fp = do
+    putStr $ fp ++ ": "
+    typeCheckFile fp
 
 typeCheckFile :: FilePath -> IO ()
 typeCheckFile fp = do
@@ -22,5 +18,11 @@ typeCheckFile fp = do
                 Nothing -> putStrLn "Type Error."
                 Just _ -> putStrLn "Program Ok."
 
-
-
+typeCheckText :: String -> IO ()
+typeCheckText src =
+    case parse parseTopLevel "<input>" src of
+        Left err -> putStr $ errorBundlePretty err
+        Right decls ->
+            case processFile decls of
+                Nothing -> putStrLn "Type Error."
+                Just _ -> putStrLn "Program Ok."

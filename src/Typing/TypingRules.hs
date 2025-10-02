@@ -129,7 +129,8 @@ typingSynth ctx r (TermReplace target motive base) = do -- EqE-1
             return $ The (readBackType ctx (doAp motiveOutVal toVal)) (TermReplace targetOut motiveOut baseOut)
         _ -> Nothing
 typingSynth ctx r (TermCong xType t f) = do -- EqE-2
-    let xTypeVal = valInCtx ctx xType
+    xTypeOut <- isType ctx r xType
+    let xTypeVal = valInCtx ctx xTypeOut
     (The tTypeOut tOut) <- typingSynth ctx r t
     (The fTypeOut fOut) <- typingSynth ctx r f
     case (valInCtx ctx tTypeOut, valInCtx ctx fTypeOut) of
@@ -143,7 +144,7 @@ typingSynth ctx r (TermCong xType t f) = do -- EqE-2
                 -- they actually store the codomain type in the 3-param cong (and only do synth on the 2-param cong, and also have a different param order for the 3-param cong),
                 -- but the actual type rule and standing convention in line with our other synth rules is to keep the domain type in the expression itself and just use
                 -- the codomain type in the type annotation that is returned.
-            return $ The (TermEq coDomainTypeOut (readBack ctx coDomainTypeVal (doAp fVal fromVal)) (readBack ctx coDomainTypeVal (doAp fVal toVal))) (TermCong xType tOut fOut)
+            return $ The (TermEq coDomainTypeOut (readBack ctx coDomainTypeVal (doAp fVal fromVal)) (readBack ctx coDomainTypeVal (doAp fVal toVal))) (TermCong xTypeOut tOut fOut)
         _ -> Nothing
 typingSynth ctx r (TermSymm t) = do -- EqE-3
     (The tType tOut) <- typingSynth ctx r t

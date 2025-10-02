@@ -1,9 +1,9 @@
 module Main where
 
 import InterfaceIO.Interface
+import System.Environment (getArgs)
 
 main :: IO ()
 main = do
-    putStrLn "Input filename:"
-    fp <- getLine
-    typeCheckFile fp
+    filePaths <- getArgs
+    mapM_ printAndCheckFile filePaths

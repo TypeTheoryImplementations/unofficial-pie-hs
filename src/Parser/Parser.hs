@@ -11,6 +11,7 @@ import qualified Text.Megaparsec.Char.Lexer as CharLexer
 import qualified Data.Void as Void
 import Control.Monad
 
+
 type Parser = Parsec Void.Void String
 
 -- NOTE: Preface all parsing functions with `parse`
@@ -62,7 +63,9 @@ parseSingleParam = parseParens $ do
 
 parseTerm :: Parser Term
 parseTerm =
-            try parseTermThe
+            try parseTermVar -- NOTE: This already makes sure it is not a keyword. It must be first so that we don't accidentally consume part of an identifier.
+        <|> try parseTermApplication
+        <|> try parseTermThe
         <|> try parseTermAtom
         <|> try parseTermAtomLiteral
         <|> try parseTermSigma
@@ -104,9 +107,7 @@ parseTerm =
         <|> try parseTermTrivialSole
         <|> try parseTermAbsurd
         <|> try parseTermIndAbsurd
-        <|> try parseTermU
-        <|> try parseTermApplication -- NOTE: General, consumes any two space separated terms in parens. Must be near bottom/after most expressions
-        <|>     parseTermVar -- NOTE: General, consumes any valid identifier. Must be near bottom/after all keywords
+        <|>     parseTermU
 
 parseTermThe :: Parser Term
 parseTermThe = TermThe <$> parseThe
