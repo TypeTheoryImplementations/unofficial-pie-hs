@@ -1,6 +1,9 @@
+-- Copyright (C) 2025 Lincoln Sand
+-- SPDX-License-Identifier: AGPL-3.0-only
+
 module Typing.SemanticTypes where
 
-import Data.List
+import Data.List (elemIndex)
 import Utils.BasicTypes
 import Typing.CoreTypes
 import Parser.SyntacticTypes

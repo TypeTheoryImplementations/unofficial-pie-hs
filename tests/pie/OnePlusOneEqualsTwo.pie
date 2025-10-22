@@ -1,3 +1,8 @@
+; SPDX-License-Identifier: CC-BY-4.0
+; Derived from examples in *The Little Typer* (MIT Press, 2018)
+; © 2018 Daniel P. Friedman and David Thrane Christiansen.
+; Modified by Lincoln Sand, 2025.
+
 (claim plus (-> Nat Nat Nat))
 (define plus
   (lambda (x y)

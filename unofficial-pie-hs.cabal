@@ -1,0 +1,97 @@
+cabal-version:      3.4
+
+name:               unofficial-pie-hs
+version:            1.0.0.0
+synopsis:           An unofficial implementation of Pie in Haskell
+description:        This is an easy to understand unofficial reimplementation of the Pie language from The Little Typer written in Haskell.
+category:           Text
+build-type:         Simple
+
+-- All Haskell (.hs) sources in `src/` are AGPL-3.0-only.
+license:            AGPL-3.0-only
+license-file:       LICENSES/AGPL-3.0.txt
+
+author:             Lincoln Sand
+maintainer:         sandlincoln@gmail.com
+
+-- Ensure .pie tests are included in source tarballs.
+extra-source-files:
+    tests/pie/*.pie
+
+-- Include CC-BY text for .pie tests
+extra-doc-files:
+    README.md
+    -- covers source (.hs):
+    LICENSES/AGPL-3.0.txt
+    -- covers tests (.pie):
+    LICENSES/CC-BY-4.0.txt
+
+-- Install .pie tests as data so test code can find them via Paths_*.
+data-files:
+    tests/pie/*.pie
+
+tested-with:
+    GHC == 9.10.*
+
+source-repository head
+    type: git
+    location: https://github.com/TypeTheoryImplementations/unofficial-pie-hs
+
+common common-opts
+    default-language: GHC2024
+    ghc-options:
+        -Wall
+        -Wcompat
+        -Wunused-top-binds
+        -Wunused-imports
+        -Wincomplete-uni-patterns
+        -Wincomplete-record-updates
+
+library
+    import:           common-opts
+    hs-source-dirs:   src
+
+    exposed-modules:
+        InterfaceIO.Interface
+        Parser.Parser
+    other-modules:
+        Parser.SyntacticTypes
+        Typing.CoreTypes
+        Typing.Normalization
+        Typing.SemanticTypes
+        Typing.TypingRules
+        Utils.BasicTypes
+
+    build-depends:
+        base ^>=4.20.0.0,
+        megaparsec >= 9.0,
+        parser-combinators >= 1.0,
+        containers >= 0.7,
+        mtl >= 2.2.2
+
+executable unofficial-pie-hs
+    import:           common-opts
+    hs-source-dirs:   app
+    main-is:          Main.hs
+
+    build-depends:
+        base ^>=4.20.0.0,
+        unofficial-pie-hs
+
+test-suite unofficial-pie-hs-test
+    import:           common-opts
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Spec.hs
+
+    build-tool-depends:
+        hspec-discover:hspec-discover
+
+    build-depends:
+        base ^>=4.20.0.0,
+        megaparsec >= 9.0,
+        hspec,
+        unofficial-pie-hs
+
+    other-modules:
+        ParsingSpec

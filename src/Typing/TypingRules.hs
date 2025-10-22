@@ -1,3 +1,6 @@
+-- Copyright (C) 2025 Lincoln Sand
+-- SPDX-License-Identifier: AGPL-3.0-only
+
 module Typing.TypingRules where
 
 import Utils.BasicTypes
@@ -5,16 +8,6 @@ import Parser.SyntacticTypes
 import Typing.SemanticTypes
 import Typing.Normalization
 import Typing.CoreTypes
-
--- Forms of judgement:
--- Γ ctx                                Γ is a context.
--- Γ ⊢ fresh -> x                       Γ does not bind x.
--- Γ ⊢ x lookup -> c_t                  Looking up x in Γ yields the type c_t.
--- Γ ⊢ e_t type -> c_t                  e_t represents the type c_t.
--- Γ ⊢ c_1 ≡ c_2 type                   c_1 and c_2 are the same type.
--- Γ ⊢ e ∈ c_t -> c_e                   Checking that e can have type c_t results in c_e.
--- Γ ⊢ e synth -> (the c_t c_e)         From e, the type c_t can be synthesized, resulting in c_e.
--- Γ ⊢ c_1 ≡ c_2 : c_t                  c_1 is the same c_t as c_2.
 
 typingSynth :: Context -> Renaming -> SyntacticTerm -> Maybe The
 typingSynth ctx r (SrcVar x) = do -- Hypothesis

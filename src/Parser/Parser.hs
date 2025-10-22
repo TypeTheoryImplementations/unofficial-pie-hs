@@ -1,3 +1,6 @@
+-- Copyright (C) 2025 Lincoln Sand
+-- SPDX-License-Identifier: AGPL-3.0-only
+
 module Parser.Parser(parseTopLevel, processFile, SyntacticTerm(..), Name, The(..), TopLevelDecls) where
 
 import Parser.SyntacticTypes
