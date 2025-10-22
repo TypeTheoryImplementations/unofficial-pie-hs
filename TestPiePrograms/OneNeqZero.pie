@@ -1,0 +1,43 @@
+(claim equals-consequence (-> Nat Nat U))
+;               | zero      | (add1 j-1)
+; zero          | Trivial   | Absurd
+; (add1 n-1)    | Absurd    | (= Nat  n-1 j-1)
+(define equals-consequence
+  (lambda (n j)
+    (which-Nat n
+      (which-Nat j
+        Trivial
+        (lambda (j-1)
+          Absurd))
+      (lambda (n-1)
+        (which-Nat j
+          Absurd
+          (lambda (j-1)
+            (= Nat n-1 j-1)))))))
+
+(claim equals-consequence-same (Pi ((n Nat)) (equals-consequence n n)))
+(define equals-consequence-same
+  (lambda (n)
+    (ind-Nat n
+      (lambda (k)
+        (equals-consequence k k))
+      sole
+      (lambda (n-1 ih)
+        (same n-1)))))
+
+(claim use-Nat-equals (Pi ((n Nat) (j Nat)) (-> (= Nat n j) (equals-consequence n j))))
+(define use-Nat-equals
+  (lambda (n j)
+    (lambda (n-equals-j)
+      (replace n-equals-j
+        (lambda (k)
+          (equals-consequence n k))
+        (equals-consequence-same n)))))
+
+(claim zero-not-add1 (Pi ((n Nat)) (-> (= Nat zero (add1 n)) Absurd)))
+(define zero-not-add1
+  (lambda (n)
+    (use-Nat-equals zero (add1 n))))
+
+(claim one-neq-zero (-> (= Nat 0 1) Absurd))
+(define one-neq-zero (zero-not-add1 zero))

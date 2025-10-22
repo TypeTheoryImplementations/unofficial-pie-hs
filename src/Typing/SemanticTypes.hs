@@ -1,6 +1,8 @@
 module Typing.SemanticTypes where
 
 import Data.List
+import Utils.BasicTypes
+import Typing.CoreTypes
 import Parser.SyntacticTypes
 
 data Binder
@@ -15,7 +17,7 @@ type Context = [(Name, Binder)]
 type Env = [(Name, Value)]
 
 data Closure
-    = FO_CLOS { foClosEnv :: Env, foClosVar :: Name, foClosExpr :: Term }
+    = FO_CLOS { foClosEnv :: Env, foClosVar :: Name, foClosExpr :: CoreTerm }
     | HO_CLOS { hoClosProc :: (Value -> Value) }
 
 data Value
@@ -65,10 +67,10 @@ data Neutral
     | N_Ind_Nat { nIndNatTarget :: Neutral, nIndNatMotive :: Norm, nIndNatBase :: Norm, nIndNatStep :: Norm }
 
     | N_Car { nCarTarget :: Neutral }
-    | N_Cdr { nCdrtarget :: Neutral }
+    | N_Cdr { nCdrTarget :: Neutral }
 
     | N_Rec_List { nRecListTarget :: Neutral, nRecListBase :: Norm, nRecListStep :: Norm }
-    | N_Ind_List { nRecListTarget :: Neutral, nRecListMotive :: Norm, nRecListBase :: Norm, nRecListStep :: Norm }
+    | N_Ind_List { nIndListTarget :: Neutral, nIndListMotive :: Norm, nIndListBase :: Norm, nIndListStep :: Norm }
 
     | N_Ind_Absurd { nIndAbsurdTarget :: Neutral, nIndAbsurdMotive :: Norm }
 
@@ -122,15 +124,103 @@ rename r x = case renameLookup r x of
 
 bindFree :: Context -> Name -> Value -> Context
 bindFree ctx x typeVal = case typingLookup ctx x of
-    Just _ -> error (x ++ "already bound in context")
+    Just _ -> error (x ++ " already bound in context")
     Nothing -> ((x, Free typeVal):ctx)
 
 fresh :: Context -> Name -> Name
 fresh ctx x = freshen (namesOnly ctx) x
 
+freshBinder :: Context -> SyntacticTerm -> Name -> Name
+freshBinder ctx expr x = freshen ((namesOnly ctx) ++ (occurringNames expr)) x
+
 namesOnly :: Context -> [Name]
 namesOnly [] = []
 namesOnly (ctxHead : ctxTail) = [fst ctxHead] ++ (namesOnly ctxTail)
+
+
+
+occurringNames :: SyntacticTerm -> [Name]
+occurringNames (SrcThe t e) =
+    (occurringNames t) ++ (occurringNames e)
+occurringNames (SrcNatAdd1 n) =
+    occurringNames n
+occurringNames (SrcWhichNat target base step) =
+    (occurringNames target) ++ (occurringNames base) ++ (occurringNames step)
+occurringNames (SrcIterNat target base step) =
+    (occurringNames target) ++ (occurringNames base) ++ (occurringNames step)
+occurringNames (SrcRecNat target base step) =
+    (occurringNames target) ++ (occurringNames base) ++ (occurringNames step)
+occurringNames (SrcIndNat target motive base step) =
+    (occurringNames target) ++ (occurringNames motive) ++ (occurringNames base) ++ (occurringNames step)
+occurringNames (SrcArrow t0 ts) =
+    (occurringNames t0) ++ (concatMap occurringNames ts)
+occurringNames (SrcPi bindings t) =
+    (concatMap occurringBinderNames bindings) ++ (occurringNames t)
+occurringNames (SrcLambda bindings t) =
+    bindings ++ (occurringNames t)
+occurringNames (SrcSigma bindings t) =
+    (concatMap occurringBinderNames bindings) ++ (occurringNames t)
+occurringNames (SrcPair a d) =
+    (occurringNames a) ++ (occurringNames d)
+occurringNames (SrcCons a d) =
+    (occurringNames a) ++ (occurringNames d)
+occurringNames (SrcCar p) =
+    occurringNames p
+occurringNames (SrcCdr p) =
+    occurringNames p
+occurringNames (SrcListColonColon a d) =
+    (occurringNames a) ++ (occurringNames d)
+occurringNames (SrcList e) =
+    occurringNames e
+occurringNames (SrcRecList target base step) =
+    (occurringNames target) ++ (occurringNames base) ++ (occurringNames step)
+occurringNames (SrcIndList target motive base step) =
+    (occurringNames target) ++ (occurringNames motive) ++ (occurringNames base) ++ (occurringNames step)
+occurringNames (SrcIndAbsurd target motive) =
+    (occurringNames target) ++ (occurringNames motive)
+occurringNames (SrcEq xType from to) =
+    (occurringNames xType) ++ (occurringNames from) ++ (occurringNames to)
+occurringNames (SrcEqSame e) =
+    occurringNames e
+occurringNames (SrcEqReplace target motive base) =
+    (occurringNames target) ++ (occurringNames motive) ++ (occurringNames base)
+occurringNames (SrcEqTrans target1 target2) =
+    (occurringNames target1) ++ (occurringNames target2)
+occurringNames (SrcEqCong target func) =
+    (occurringNames target) ++ (occurringNames func)
+occurringNames (SrcEqSymm target) =
+    occurringNames target
+occurringNames (SrcEqIndEq target motive base) =
+    (occurringNames target) ++ (occurringNames motive) ++ (occurringNames base)
+occurringNames (SrcVec e len) =
+    (occurringNames e) ++ (occurringNames len)
+occurringNames (SrcVecColonColon hd tl) =
+    (occurringNames hd) ++ (occurringNames tl)
+occurringNames (SrcHead target) =
+    occurringNames target
+occurringNames (SrcTail target) =
+    occurringNames target
+occurringNames (SrcIndVec len target motive base step) =
+    (occurringNames len) ++ (occurringNames target) ++ (occurringNames motive) ++ (occurringNames base) ++ (occurringNames step)
+occurringNames (SrcEither a b) =
+    (occurringNames a) ++ (occurringNames b)
+occurringNames (SrcEitherLeft e) =
+    occurringNames e
+occurringNames (SrcEitherRight e) =
+    occurringNames e
+occurringNames (SrcIndEither target motive l r) =
+    (occurringNames target) ++ (occurringNames motive) ++ (occurringNames l) ++ (occurringNames r)
+occurringNames (SrcApplication f args) =
+    (occurringNames f) ++ (concatMap occurringNames args)
+occurringNames (SrcVar x) =
+    [x]
+occurringNames _ =
+    []
+
+occurringBinderNames :: (Name, SyntacticTerm) -> [Name]
+occurringBinderNames (x, t) = [x] ++ (occurringNames t)
+
+
 
 inUsedNames :: [Name] -> Name -> Maybe Int
 inUsedNames usedNames x = elemIndex x usedNames

@@ -1,0 +1,8 @@
+(claim id (Pi ((t U)) (-> t t)))
+(define id
+  (lambda (t) ; Generic type parameter
+    (lambda (x)
+      x)))
+
+(claim number-test (= Nat 020 20))
+(define number-test (same 20))

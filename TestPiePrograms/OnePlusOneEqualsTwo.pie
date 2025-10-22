@@ -1,0 +1,23 @@
+(claim plus (-> Nat Nat Nat))
+(define plus
+  (lambda (x y)
+    (iter-Nat x
+      y
+      (lambda (n-1)
+        (add1 n-1)))))
+
+(check-same Nat (plus 1 1) 2)
+
+(claim one-plus-one-equals-two (= Nat (plus 1 1) 2))
+(define one-plus-one-equals-two (same 2))
+
+
+(claim plus-one (-> Nat Nat))
+(define plus-one (lambda (n) (add1 n)))
+
+(claim n-equals-n-implies-succ (Pi ((n Nat))
+    (-> (= Nat n n) (= Nat (add1 n) (add1 n)))))
+(define n-equals-n-implies-succ (lambda (n p) (cong p plus-one)))
+
+(claim zero-equals-zero-implies-succ (-> (= Nat zero zero) (= Nat 1 1)))
+(define zero-equals-zero-implies-succ (n-equals-n-implies-succ 0))

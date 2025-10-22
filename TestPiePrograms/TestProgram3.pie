@@ -1,5 +1,5 @@
-(claim id-Nat (Pi (x Nat) Nat))
+(claim id-Nat (Pi ((x Nat)) Nat))
 (define id-Nat (lambda (x) x))
 
 (claim cong-id (= Nat zero zero))
-(define cong-id (cong Nat (the (= Nat zero zero) (same zero)) id-Nat))
+(define cong-id (cong (the (= Nat zero zero) (same zero)) id-Nat))

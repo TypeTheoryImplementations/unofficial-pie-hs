@@ -1,3 +1,3 @@
 (claim cong-add1-refl (= Nat (add1 zero) (add1 zero)))
 (define cong-add1-refl
-  (cong Nat (the (= Nat zero zero) (same zero)) (the (Pi (n Nat) Nat) (lambda (n) (add1 n)))))
+  (cong (the (= Nat zero zero) (same zero)) (the (Pi ((n Nat)) Nat) (lambda (n) (add1 n)))))

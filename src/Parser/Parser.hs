@@ -1,10 +1,13 @@
-module Parser.Parser(parseTopLevel, processFile, Term(..), Name, The(..)) where
+module Parser.Parser(parseTopLevel, processFile, SyntacticTerm(..), Name, The(..), TopLevelDecls) where
 
-import Text.Megaparsec
 import Parser.SyntacticTypes
+import Typing.CoreTypes
+import Utils.BasicTypes
 import Typing.SemanticTypes
 import Typing.Normalization
 import Typing.TypingRules
+
+import Text.Megaparsec
 import qualified Text.Megaparsec.Char as ParsecChar
 import qualified Text.Megaparsec.Char.Lexer as CharLexer
 
@@ -14,412 +17,445 @@ import Control.Monad
 
 type Parser = Parsec Void.Void String
 
--- NOTE: Preface all parsing functions with `parse`
-
 type TopLevelDecls = [TopLevelDecl]
+
+spaceConsumer :: Parser ()
+spaceConsumer = CharLexer.space ParsecChar.space1 (CharLexer.skipLineComment ";") empty
 
 reservedKeywords :: [Name]
 reservedKeywords = [
-    "The", "Atom", "Sigma", "cons", "car", "cdr", "Pi", "lambda", "Nat", "zero", "add1", "which-Nat",
-    "iter-Nat", "rec-Nat", "ind-Nat", "List", "nil", "rec-List", "ind-List", "Vec", "vecnil", "head", "tail",
-    "ind-Vec", "same", "symm", "cong", "replace", "trans", "Either", "left", "right", "ind-Either",
-    "Trivial", "sole", "Absurd", "ind-Absurd", "U"]
-
-parseTopLevelDecl :: Parser TopLevelDecl
-parseTopLevelDecl = (skipMany ParsecChar.spaceChar) *> parseTopLevelBinder
+    "the", "Atom", "Pair", "Sigma", "cons", "car", "cdr", "->", "Pi", "lambda",
+    "Nat", "zero", "add1", "which-Nat", "iter-Nat", "rec-Nat", "ind-Nat",
+    "List", "nil", "::", "rec-List", "ind-List", "Vec", "vecnil", "vec::", "head",
+    "tail", "ind-Vec", "=", "same", "symm", "cong", "replace", "trans", "ind-=",
+    "Either", "left", "right", "ind-Either", "Trivial", "sole", "Absurd", "ind-Absurd", "U",
+    "claim", "define", "check-same"]
 
 -- NOTE: Entry point into parser
 parseTopLevel :: Parser TopLevelDecls
-parseTopLevel = some parseTopLevelDecl <* eof
+parseTopLevel = spaceConsumer *> many parseTopLevelBinder <* spaceConsumer <* eof
 
 parseLexeme :: Parser a -> Parser a
-parseLexeme = CharLexer.lexeme ParsecChar.space
+parseLexeme = CharLexer.lexeme spaceConsumer
+
+identifierChar :: Parser Char
+identifierChar = ParsecChar.alphaNumChar <|> ParsecChar.char '-'
+
+parseKeyword :: String -> Parser String
+parseKeyword word = parseLexeme (ParsecChar.string word <* notFollowedBy identifierChar)
 
 parseSymbol :: String -> Parser String
-parseSymbol = CharLexer.symbol ParsecChar.space
+parseSymbol = CharLexer.symbol spaceConsumer
 
 parseParens :: Parser a -> Parser a
 parseParens = between (parseSymbol "(") (parseSymbol ")")
 
 parseIdentifier :: Parser String
 parseIdentifier = do
-    ident <- parseLexeme $ (:) <$> ParsecChar.letterChar <*> many (ParsecChar.alphaNumChar <|> ParsecChar.char '-')
+    ident <- parseLexeme $ (:) <$> ParsecChar.letterChar <*> many identifierChar
     if ident `elem` reservedKeywords
         then fail $ "keyword " ++ (show ident) ++ " cannot be used as an identifier"
         else return ident
 
-parseThe :: Parser The
-parseThe = parseParens $ do
-    _ <- parseSymbol "the"
-    annot <- parseTerm
-    expr <- parseTerm
-    return $ The annot expr
+parseNumber :: Parser Integer
+parseNumber = parseLexeme CharLexer.decimal
 
-parseSingleParam :: Parser (Name, Term)
+parseAtomChar :: Parser Char
+parseAtomChar = ParsecChar.letterChar
+
+parseSrc :: Parser SyntacticTerm
+parseSrc
+        =   try parseSrcThe
+        <|> try parseSrcAtom
+        <|> try parseSrcAtomLiteral
+        <|> try parseSrcPair
+        <|> try parseSrcSigma
+        <|> try parseSrcCons
+        <|> try parseSrcCar
+        <|> try parseSrcCdr
+        <|> try parseSrcArrow
+        <|> try parseSrcPi
+        <|> try parseSrcLambda
+        <|> try parseSrcNat
+        <|> try parseSrcZero
+        <|> try parseSrcAdd1
+        <|> try parseSrcNatLiteral
+        <|> try parseSrcWhichNat
+        <|> try parseSrcIterNat
+        <|> try parseSrcRecNat
+        <|> try parseSrcIndNat
+        <|> try parseSrcList
+        <|> try parseSrcListNil
+        <|> try parseSrcListColonColon
+        <|> try parseSrcRecList
+        <|> try parseSrcIndList
+        <|> try parseSrcVec
+        <|> try parseSrcVecNil
+        <|> try parseSrcVecColonColon
+        <|> try parseSrcHead
+        <|> try parseSrcTail
+        <|> try parseSrcIndVec
+        <|> try parseSrcEq
+        <|> try parseSrcEqSame
+        <|> try parseSrcSymm
+        <|> try parseSrcCong
+        <|> try parseSrcReplace
+        <|> try parseSrcTrans
+        <|> try parseSrcIndEq
+        <|> try parseSrcEither
+        <|> try parseSrcLeft
+        <|> try parseSrcRight
+        <|> try parseSrcIndEither
+        <|> try parseSrcTrivial
+        <|> try parseSrcTrivialSole
+        <|> try parseSrcAbsurd
+        <|> try parseSrcIndAbsurd
+        <|> try parseSrcU
+-- NOTE: We put `parseSrcVar` here to avoid excessive backtracking (for performance reasons).
+        <|> try parseSrcVar
+-- NOTE: We put `parseSrcApplication` last since it has no special syntax/character at the beginning to match on.
+--  It would still work if put earlier (order of the parsers doesn't matter here), but the excessive backtracing would have performance costs.
+        <|>     parseSrcApplication
+
+
+parseSingleParam :: Parser (Name, SyntacticTerm)
 parseSingleParam = parseParens $ do
     paramName <- parseIdentifier
-    paramType <- parseTerm
+    paramType <- parseSrc
     return $ (paramName, paramType)
 
-parseTerm :: Parser Term
-parseTerm =
-            try parseTermVar -- NOTE: This already makes sure it is not a keyword. It must be first so that we don't accidentally consume part of an identifier.
-        <|> try parseTermApplication
-        <|> try parseTermThe
-        <|> try parseTermAtom
-        <|> try parseTermAtomLiteral
-        <|> try parseTermSigma
-        <|> try parseTermCons
-        <|> try parseTermCar
-        <|> try parseTermCdr
-        <|> try parseTermPi
-        <|> try parseTermLambda
-        <|> try parseTermNat
-        <|> try parseTermNatZero
-        <|> try parseTermNatAdd1
-        <|> try parseTermWhichNat
-        <|> try parseTermIterNat
-        <|> try parseTermRecNat
-        <|> try parseTermIndNat
-        <|> try parseTermList
-        <|> try parseTermListNil
-        <|> try parseTermListColonColon
-        <|> try parseTermRecList
-        <|> try parseTermIndList
-        <|> try parseTermVec
-        <|> try parseTermVecNil
-        <|> try parseTermVecColonColon
-        <|> try parseTermHead
-        <|> try parseTermTail
-        <|> try parseTermIndVec
-        <|> try parseTermEq
-        <|> try parseTermEqSame
-        <|> try parseTermSymm
-        <|> try parseTermCong
-        <|> try parseTermReplace
-        <|> try parseTermTrans
-        <|> try parseTermIndEq
-        <|> try parseTermEither
-        <|> try parseTermEitherLeft
-        <|> try parseTermEitherRight
-        <|> try parseTermIndEither
-        <|> try parseTermTrivial
-        <|> try parseTermTrivialSole
-        <|> try parseTermAbsurd
-        <|> try parseTermIndAbsurd
-        <|>     parseTermU
+parseSrcThe :: Parser SyntacticTerm
+parseSrcThe = parseParens $ do
+    _ <- parseKeyword "the"
+    annot <- parseSrc
+    expr <- parseSrc
+    return $ SrcThe annot expr
 
-parseTermThe :: Parser Term
-parseTermThe = TermThe <$> parseThe
+parseSrcVar :: Parser SyntacticTerm
+parseSrcVar = SrcVar <$> parseIdentifier
 
-parseTermVar :: Parser Term
-parseTermVar = TermVar <$> parseIdentifier
+parseSrcAtom :: Parser SyntacticTerm
+parseSrcAtom = SrcAtom <$ parseKeyword "Atom"
 
-parseTermAtom :: Parser Term
-parseTermAtom = TermAtom <$ parseSymbol "Atom"
+parseSrcAtomLiteral :: Parser SyntacticTerm
+parseSrcAtomLiteral = parseLexeme $ do -- `parseLexeme` consumes the trailing whitespace after we've parsed the full atom literal
+    _ <- ParsecChar.char '\''
+    sym <- some parseAtomChar -- we do not use `parseLexeme` here or on the prior line since whitespace inside of atom literals is forbidden
+    return $ SrcAtomLiteral sym
 
-parseTermAtomLiteral :: Parser Term
-parseTermAtomLiteral = do
-    _ <- parseSymbol "'"
-    sym <- parseIdentifier
-    return $ TermAtomLiteral sym
+parseSrcPair :: Parser SyntacticTerm
+parseSrcPair = parseParens $ do
+    _ <- parseKeyword "Pair"
+    car <- parseSrc
+    cdr <- parseSrc
+    return $ SrcPair car cdr
 
-parseTermSigma :: Parser Term
-parseTermSigma = parseParens $ do
-    _ <- parseSymbol "Sigma"
-    paramList <- parseSingleParam
-    body <- parseTerm
-    return $ TermSigma (fst paramList) (snd paramList) body
+parseSrcSigma :: Parser SyntacticTerm
+parseSrcSigma = parseParens $ do
+    _ <- parseKeyword "Sigma"
+    paramList <- parseParens $ some parseSingleParam
+    body <- parseSrc
+    return $ SrcSigma paramList body
 
-parseTermCons :: Parser Term
-parseTermCons = parseParens $ do
-    _ <- parseSymbol "cons"
-    car <- parseTerm
-    cdr <- parseTerm
-    return $ TermCons car cdr
+parseSrcCons :: Parser SyntacticTerm
+parseSrcCons = parseParens $ do
+    _ <- parseKeyword "cons"
+    car <- parseSrc
+    cdr <- parseSrc
+    return $ SrcCons car cdr
 
-parseTermCar :: Parser Term
-parseTermCar = parseParens $ do
-    _ <- parseSymbol "car"
-    expr <- parseTerm
-    return $ TermCar expr
+parseSrcCar :: Parser SyntacticTerm
+parseSrcCar = parseParens $ do
+    _ <- parseKeyword "car"
+    expr <- parseSrc
+    return $ SrcCar expr
 
-parseTermCdr :: Parser Term
-parseTermCdr = parseParens $ do
-    _ <- parseSymbol "cdr"
-    expr <- parseTerm
-    return $ TermCdr expr
+parseSrcCdr :: Parser SyntacticTerm
+parseSrcCdr = parseParens $ do
+    _ <- parseKeyword "cdr"
+    expr <- parseSrc
+    return $ SrcCdr expr
 
-parseTermPi :: Parser Term
-parseTermPi = parseParens $ do
-    _ <- parseSymbol "Pi"
-    paramList <- parseSingleParam
-    body <- parseTerm
-    return $ TermPi (fst paramList) (snd paramList) body
+parseSrcArrow :: Parser SyntacticTerm
+parseSrcArrow = parseParens $ do
+    _ <- parseKeyword "->"
+    fromType <- parseSrc
+    toTypes <- some parseSrc
+    return $ SrcArrow fromType toTypes
 
-parseTermLambda :: Parser Term
-parseTermLambda = parseParens $ do
-    _ <- parseSymbol "lambda"
-    paramName <- parseParens $ parseIdentifier
-    body <- parseTerm
-    return $ TermLambda paramName body
+parseSrcPi :: Parser SyntacticTerm
+parseSrcPi = parseParens $ do
+    _ <- parseKeyword "Pi"
+    paramList <- parseParens $ some parseSingleParam
+    body <- parseSrc
+    return $ SrcPi paramList body
 
-parseTermApplication :: Parser Term
-parseTermApplication = parseParens $ do
-    func <- parseTerm
-    arg <- parseTerm
-    return $ TermApplication func arg
+parseSrcLambda :: Parser SyntacticTerm
+parseSrcLambda = parseParens $ do
+    _ <- parseKeyword "lambda"
+    paramNames <- parseParens $ some parseIdentifier
+    body <- parseSrc
+    return $ SrcLambda paramNames body
 
-parseTermNat :: Parser Term
-parseTermNat = TermNat <$ parseSymbol "Nat"
+parseSrcApplication :: Parser SyntacticTerm
+parseSrcApplication = parseParens $ do
+    func <- parseSrc
+    args <- some parseSrc
+    return $ SrcApplication func args
 
-parseTermNatZero :: Parser Term
-parseTermNatZero = TermNatZero <$ parseSymbol "zero"
+parseSrcNat :: Parser SyntacticTerm
+parseSrcNat = SrcNat <$ parseKeyword "Nat"
 
-parseTermNatAdd1 :: Parser Term
-parseTermNatAdd1 = parseParens $ do
-    _ <- parseSymbol "add1"
-    arg <- parseTerm
-    return $ TermNatAdd1 arg
+parseSrcZero :: Parser SyntacticTerm
+parseSrcZero = SrcNatZero <$ parseKeyword "zero"
 
-parseTermWhichNat :: Parser Term
-parseTermWhichNat = parseParens $ do
-    _ <- parseSymbol "which-Nat"
-    target <- parseTerm
-    base <- parseThe
-    step <- parseTerm
-    return $ TermWhichNat target base step
+parseSrcAdd1 :: Parser SyntacticTerm
+parseSrcAdd1 = parseParens $ do
+    _ <- parseKeyword "add1"
+    arg <- parseSrc
+    return $ SrcNatAdd1 arg
 
-parseTermIterNat :: Parser Term
-parseTermIterNat = parseParens $ do
-    _ <- parseSymbol "iter-Nat"
-    target <- parseTerm
-    base <- parseThe
-    step <- parseTerm
-    return $ TermIterNat target base step
+parseSrcNatLiteral :: Parser SyntacticTerm
+parseSrcNatLiteral = SrcNatLiteral <$> parseNumber
 
-parseTermRecNat :: Parser Term
-parseTermRecNat = parseParens $ do
-    _ <- parseSymbol "rec-Nat"
-    target <- parseTerm
-    base <- parseThe
-    step <- parseTerm
-    return $ TermRecNat target base step
+parseSrcWhichNat :: Parser SyntacticTerm
+parseSrcWhichNat = parseParens $ do
+    _ <- parseKeyword "which-Nat"
+    target <- parseSrc
+    base <- parseSrc
+    step <- parseSrc
+    return $ SrcWhichNat target base step
 
-parseTermIndNat :: Parser Term
-parseTermIndNat = parseParens $ do
-    _ <- parseSymbol "ind-Nat"
-    target <- parseTerm
-    mot <- parseTerm
-    base <- parseTerm
-    step <- parseTerm
-    return $ TermIndNat target mot base step
+parseSrcIterNat :: Parser SyntacticTerm
+parseSrcIterNat = parseParens $ do
+    _ <- parseKeyword "iter-Nat"
+    target <- parseSrc
+    base <- parseSrc
+    step <- parseSrc
+    return $ SrcIterNat target base step
 
-parseTermList :: Parser Term
-parseTermList = parseParens $ do
-    _ <- parseSymbol "List"
-    elementType <- parseTerm
-    return $ TermList elementType
+parseSrcRecNat :: Parser SyntacticTerm
+parseSrcRecNat = parseParens $ do
+    _ <- parseKeyword "rec-Nat"
+    target <- parseSrc
+    base <- parseSrc
+    step <- parseSrc
+    return $ SrcRecNat target base step
 
-parseTermListNil :: Parser Term
-parseTermListNil = TermListNil <$ parseSymbol "nil"
+parseSrcIndNat :: Parser SyntacticTerm
+parseSrcIndNat = parseParens $ do
+    _ <- parseKeyword "ind-Nat"
+    target <- parseSrc
+    mot <- parseSrc
+    base <- parseSrc
+    step <- parseSrc
+    return $ SrcIndNat target mot base step
 
-parseTermListColonColon :: Parser Term
-parseTermListColonColon = parseParens $ do
-    _ <- parseSymbol "::"
-    listHead <- parseTerm
-    listTail <- parseTerm
-    return $ TermListColonColon listHead listTail
+parseSrcList :: Parser SyntacticTerm
+parseSrcList = parseParens $ do
+    _ <- parseKeyword "List"
+    elementType <- parseSrc
+    return $ SrcList elementType
 
-parseTermRecList :: Parser Term
-parseTermRecList = parseParens $ do
-    _ <- parseSymbol "rec-List"
-    target <- parseTerm
-    base <- parseThe
-    step <- parseTerm
-    return $ TermRecList target base step
+parseSrcListNil :: Parser SyntacticTerm
+parseSrcListNil = SrcListNil <$ parseKeyword "nil"
 
-parseTermIndList :: Parser Term
-parseTermIndList = parseParens $ do
-    _ <- parseSymbol "ind-List"
-    target <- parseTerm
-    mot <- parseTerm
-    base <- parseTerm
-    step <- parseTerm
-    return $ TermIndList target mot base step
+parseSrcListColonColon :: Parser SyntacticTerm
+parseSrcListColonColon = parseParens $ do
+    _ <- parseKeyword "::"
+    listHead <- parseSrc
+    listTail <- parseSrc
+    return $ SrcListColonColon listHead listTail
 
-parseTermVec :: Parser Term
-parseTermVec = parseParens $ do
-    _ <- parseSymbol "Vec"
-    elementType <- parseTerm
-    vecSize <- parseTerm
-    return $ TermVec elementType vecSize
+parseSrcRecList :: Parser SyntacticTerm
+parseSrcRecList = parseParens $ do
+    _ <- parseKeyword "rec-List"
+    target <- parseSrc
+    base <- parseSrc
+    step <- parseSrc
+    return $ SrcRecList target base step
 
-parseTermVecNil :: Parser Term
-parseTermVecNil = TermVecNil <$ parseSymbol "vecnil"
+parseSrcIndList :: Parser SyntacticTerm
+parseSrcIndList = parseParens $ do
+    _ <- parseKeyword "ind-List"
+    target <- parseSrc
+    mot <- parseSrc
+    base <- parseSrc
+    step <- parseSrc
+    return $ SrcIndList target mot base step
 
-parseTermVecColonColon :: Parser Term
-parseTermVecColonColon = parseParens $ do
-    _ <- parseSymbol "vec::"
-    vecHead <- parseTerm
-    vecTail <- parseTerm
-    return $ TermVecColonColon vecHead vecTail
+parseSrcVec :: Parser SyntacticTerm
+parseSrcVec = parseParens $ do
+    _ <- parseKeyword "Vec"
+    elementType <- parseSrc
+    vecSize <- parseSrc
+    return $ SrcVec elementType vecSize
 
-parseTermHead :: Parser Term
-parseTermHead = parseParens $ do
-    _ <- parseSymbol "head"
-    expr <- parseTerm
-    return $ TermHead expr
+parseSrcVecNil :: Parser SyntacticTerm
+parseSrcVecNil = SrcVecNil <$ parseKeyword "vecnil"
 
-parseTermTail :: Parser Term
-parseTermTail = parseParens $ do
-    _ <- parseSymbol "tail"
-    expr <- parseTerm
-    return $ TermTail expr
+parseSrcVecColonColon :: Parser SyntacticTerm
+parseSrcVecColonColon = parseParens $ do
+    _ <- parseKeyword "vec::"
+    vecHead <- parseSrc
+    vecTail <- parseSrc
+    return $ SrcVecColonColon vecHead vecTail
 
-parseTermIndVec :: Parser Term
-parseTermIndVec = parseParens $ do
-    _ <- parseSymbol "ind-Vec"
-    n <- parseTerm
-    target <- parseTerm
-    mot <- parseTerm
-    base <- parseTerm
-    step <- parseTerm
-    return $ TermIndVec n target mot base step
+parseSrcHead :: Parser SyntacticTerm
+parseSrcHead = parseParens $ do
+    _ <- parseKeyword "head"
+    expr <- parseSrc
+    return $ SrcHead expr
 
-parseTermEq :: Parser Term
-parseTermEq = parseParens $ do
-    _ <- parseSymbol "="
-    exprType <- parseTerm
-    from <- parseTerm
-    to <- parseTerm
-    return $ TermEq exprType from to
+parseSrcTail :: Parser SyntacticTerm
+parseSrcTail = parseParens $ do
+    _ <- parseKeyword "tail"
+    expr <- parseSrc
+    return $ SrcTail expr
 
-parseTermEqSame :: Parser Term
-parseTermEqSame = parseParens $ do
-    _ <- parseSymbol "same"
-    expr <- parseTerm
-    return $ TermEqSame expr
+parseSrcIndVec :: Parser SyntacticTerm
+parseSrcIndVec = parseParens $ do
+    _ <- parseKeyword "ind-Vec"
+    n <- parseSrc
+    target <- parseSrc
+    mot <- parseSrc
+    base <- parseSrc
+    step <- parseSrc
+    return $ SrcIndVec n target mot base step
 
-parseTermSymm :: Parser Term
-parseTermSymm = parseParens $ do
-    _ <- parseSymbol "symm"
-    expr <- parseTerm
-    return $ TermSymm expr
+parseSrcEq :: Parser SyntacticTerm
+parseSrcEq = parseParens $ do
+    _ <- parseKeyword "="
+    exprType <- parseSrc
+    from <- parseSrc
+    to <- parseSrc
+    return $ SrcEq exprType from to
 
-parseTermCong :: Parser Term
-parseTermCong = parseParens $ do
-    _ <- parseSymbol "cong"
-    exprType <- parseTerm
-    expr <- parseTerm
-    func <- parseTerm
-    return $ TermCong exprType expr func
+parseSrcEqSame :: Parser SyntacticTerm
+parseSrcEqSame = parseParens $ do
+    _ <- parseKeyword "same"
+    expr <- parseSrc
+    return $ SrcEqSame expr
 
-parseTermReplace :: Parser Term
-parseTermReplace = parseParens $ do
-    _ <- parseSymbol "replace"
-    target <- parseTerm
-    mot <- parseTerm
-    base <- parseTerm
-    return $ TermReplace target mot base
+parseSrcSymm :: Parser SyntacticTerm
+parseSrcSymm = parseParens $ do
+    _ <- parseKeyword "symm"
+    expr <- parseSrc
+    return $ SrcEqSymm expr
 
-parseTermTrans :: Parser Term
-parseTermTrans = parseParens $ do
-    _ <- parseSymbol "trans"
-    fromMid <- parseTerm
-    midTo <- parseTerm
-    return $ TermTrans fromMid midTo
+parseSrcCong :: Parser SyntacticTerm
+parseSrcCong = parseParens $ do
+    _ <- parseKeyword "cong"
+    expr <- parseSrc
+    func <- parseSrc
+    return $ SrcEqCong expr func
+
+parseSrcReplace :: Parser SyntacticTerm
+parseSrcReplace = parseParens $ do
+    _ <- parseKeyword "replace"
+    target <- parseSrc
+    mot <- parseSrc
+    base <- parseSrc
+    return $ SrcEqReplace target mot base
+
+parseSrcTrans :: Parser SyntacticTerm
+parseSrcTrans = parseParens $ do
+    _ <- parseKeyword "trans"
+    fromMid <- parseSrc
+    midTo <- parseSrc
+    return $ SrcEqTrans fromMid midTo
 
 -- Aka: The J eliminator
-parseTermIndEq :: Parser Term
-parseTermIndEq = parseParens $ do
-    _ <- parseSymbol "ind-="
-    target <- parseTerm
-    motive <- parseTerm
-    base <- parseTerm
-    return $ TermIndEq target motive base
+parseSrcIndEq :: Parser SyntacticTerm
+parseSrcIndEq = parseParens $ do
+    _ <- parseKeyword "ind-="
+    target <- parseSrc
+    motive <- parseSrc
+    base <- parseSrc
+    return $ SrcEqIndEq target motive base
 
-parseTermEither :: Parser Term
-parseTermEither = parseParens $ do
-    _ <- parseSymbol "Either"
-    leftType <- parseTerm
-    rightType <- parseTerm
-    return $ TermEither leftType rightType
+parseSrcEither :: Parser SyntacticTerm
+parseSrcEither = parseParens $ do
+    _ <- parseKeyword "Either"
+    leftType <- parseSrc
+    rightType <- parseSrc
+    return $ SrcEither leftType rightType
 
-parseTermEitherLeft :: Parser Term
-parseTermEitherLeft = parseParens $ do
-    _ <- parseSymbol "left"
-    expr <- parseTerm
-    return $ TermEitherLeft expr
+parseSrcLeft :: Parser SyntacticTerm
+parseSrcLeft = parseParens $ do
+    _ <- parseKeyword "left"
+    expr <- parseSrc
+    return $ SrcEitherLeft expr
 
-parseTermEitherRight :: Parser Term
-parseTermEitherRight = parseParens $ do
-    _ <- parseSymbol "right"
-    expr <- parseTerm
-    return $ TermEitherRight expr
+parseSrcRight :: Parser SyntacticTerm
+parseSrcRight = parseParens $ do
+    _ <- parseKeyword "right"
+    expr <- parseSrc
+    return $ SrcEitherRight expr
 
-parseTermIndEither :: Parser Term
-parseTermIndEither = parseParens $ do
-    _ <- parseSymbol "ind-Either"
-    target <- parseTerm
-    mot <- parseTerm
-    baseLeft <- parseTerm
-    baseRight <- parseTerm
-    return $ TermIndEither target mot baseLeft baseRight
+parseSrcIndEither :: Parser SyntacticTerm
+parseSrcIndEither = parseParens $ do
+    _ <- parseKeyword "ind-Either"
+    target <- parseSrc
+    mot <- parseSrc
+    baseLeft <- parseSrc
+    baseRight <- parseSrc
+    return $ SrcIndEither target mot baseLeft baseRight
 
-parseTermTrivial :: Parser Term
-parseTermTrivial = TermTrivial <$ parseSymbol "Trivial"
+parseSrcTrivial :: Parser SyntacticTerm
+parseSrcTrivial = SrcTrivial <$ parseKeyword "Trivial"
 
-parseTermTrivialSole :: Parser Term
-parseTermTrivialSole = TermTrivialSole <$ parseSymbol "sole"
+parseSrcTrivialSole :: Parser SyntacticTerm
+parseSrcTrivialSole = SrcTrivialSole <$ parseKeyword "sole"
 
-parseTermAbsurd :: Parser Term
-parseTermAbsurd = TermAbsurd <$ parseSymbol "Absurd"
+parseSrcAbsurd :: Parser SyntacticTerm
+parseSrcAbsurd = SrcAbsurd <$ parseKeyword "Absurd"
 
-parseTermIndAbsurd :: Parser Term
-parseTermIndAbsurd = parseParens $ do
-    _ <- parseSymbol "ind-Absurd"
-    target <- parseTerm
-    mot <- parseTerm
-    return $ TermIndAbsurd target mot
+parseSrcIndAbsurd :: Parser SyntacticTerm
+parseSrcIndAbsurd = parseParens $ do
+    _ <- parseKeyword "ind-Absurd"
+    target <- parseSrc
+    mot <- parseSrc
+    return $ SrcIndAbsurd target mot
 
-parseTermU :: Parser Term
-parseTermU = TermU <$ parseSymbol "U"
+parseSrcU :: Parser SyntacticTerm
+parseSrcU = SrcU <$ parseKeyword "U"
 
 
 data TopLevelDecl
-    = TopLevelClaim Name Term
-    | TopLevelDef Name Term
-    | TopLevelCheckSame Term Term Term
-    | TopLevelFree Term
+    = TopLevelClaim Name SyntacticTerm
+    | TopLevelDef Name SyntacticTerm
+    | TopLevelCheckSame SyntacticTerm SyntacticTerm SyntacticTerm
+    | TopLevelFree SyntacticTerm
+    deriving (Eq, Show)
 
 parseTopLevelBinder :: Parser TopLevelDecl
-parseTopLevelBinder =
-        try parseClaim
+parseTopLevelBinder
+    =   try parseClaim
     <|> try parseDef
     <|> try parseCheckSame
-    <|>     TopLevelFree <$> parseTerm
+    <|>     TopLevelFree <$> parseSrc
 
 parseClaim :: Parser TopLevelDecl
 parseClaim = parseParens $ do
-    _ <- parseSymbol "claim"
+    _ <- parseKeyword "claim"
     x <- parseIdentifier
-    xType <- parseTerm
+    xType <- parseSrc
     return $ TopLevelClaim x xType
 
 parseDef :: Parser TopLevelDecl
 parseDef = parseParens $ do
-    _ <- parseSymbol "define"
+    _ <- parseKeyword "define"
     x <- parseIdentifier
-    xDef <- parseTerm
+    xDef <- parseSrc
     return $ TopLevelDef x xDef
 
 parseCheckSame :: Parser TopLevelDecl
 parseCheckSame = parseParens $ do
-    _ <- parseSymbol "check-same"
-    xType <- parseTerm
-    x1 <- parseTerm
-    x2 <- parseTerm
+    _ <- parseKeyword "check-same"
+    xType <- parseSrc
+    x1 <- parseSrc
+    x2 <- parseSrc
     return $ TopLevelCheckSame xType x1 x2
 
 
@@ -440,13 +476,13 @@ processDecl ctx (TopLevelCheckSame ty e1 e2) = checkSame ctx ty e1 e2 >> return 
 processDecl ctx (TopLevelFree e) = typingSynth ctx initRename e >> return ctx
 
 
-addClaim :: Context -> Name -> Term -> Maybe Context
+addClaim :: Context -> Name -> SyntacticTerm -> Maybe Context
 addClaim ctx x ty = do
     _ <- notUsed ctx x
     tyOut <- isType ctx initRename ty
     return ((x, Claim (valInCtx ctx tyOut)):ctx)
 
-addDef :: Context -> Name -> Term -> Maybe Context
+addDef :: Context -> Name -> SyntacticTerm -> Maybe Context
 addDef ctx x expr = do
     typeVal <- getClaim ctx x
     exprOut <- typingCheck ctx initRename expr typeVal
@@ -461,7 +497,7 @@ removeClaim x ((y, b):ctxTail)
             _ -> error "There is a logic error in the implementation where `removeClaim` has been called with duplicate definitions in the context"
     | otherwise = (y, b) : removeClaim x ctxTail
 
-checkSame :: Context -> Term -> Term -> Term -> Maybe ConvertSuccess
+checkSame :: Context -> SyntacticTerm -> SyntacticTerm -> SyntacticTerm -> Maybe ConvertSuccess
 checkSame ctx ty a b = do
     tyOut <- isType ctx initRename ty
     let tyVal = valInCtx ctx tyOut

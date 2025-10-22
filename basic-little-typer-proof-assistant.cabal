@@ -25,11 +25,13 @@ library
 
     exposed-modules:
         InterfaceIO.Interface,
-        Parser.SyntacticTypes,
         Parser.Parser,
+        Parser.SyntacticTypes,
+        Typing.CoreTypes,
+        Typing.Normalization,
         Typing.SemanticTypes,
         Typing.TypingRules,
-        Typing.Normalization
+        Utils.BasicTypes
 
     build-depends:
         base ^>=4.20.0.0,

@@ -1,7 +1,7 @@
-(claim id-Nat (Pi (x Nat) Nat))
+(claim id-Nat (Pi ((x Nat)) Nat))
 (define id-Nat (lambda (x) x))
 
-(claim two (Pi (n Nat) Nat))
+(claim two (Pi ((n Nat)) Nat))
 (define two (lambda (n) (add1 (add1 n))))
 (check-same Nat (two zero) (add1 (add1 zero)))
 
