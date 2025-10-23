@@ -99,8 +99,8 @@ data Neutral
 data Norm = THE { normTheType :: Value, normTheValue :: Value }
 
 -- NOTE: We skip Claims because we require variables to actually be defined in order for them to be used.
---      Skipping claims during variable lookup disallows all undefined variables automatically.
---      Claims are only used when generating/checking the type for Defs.
+--  Skipping claims during variable lookup disallows all undefined variables automatically.
+--  Claims are only used when generating/checking the type for Defs.
 typingLookup :: Context -> Name -> Maybe Value
 typingLookup [] _ = Nothing
 typingLookup ((_, Claim _):ctxTail) x =
@@ -139,8 +139,6 @@ freshBinder ctx expr x = freshen ((namesOnly ctx) ++ (occurringNames expr)) x
 namesOnly :: Context -> [Name]
 namesOnly [] = []
 namesOnly (ctxHead : ctxTail) = [fst ctxHead] ++ (namesOnly ctxTail)
-
-
 
 occurringNames :: SyntacticTerm -> [Name]
 occurringNames (SrcThe t e) =
@@ -181,8 +179,8 @@ occurringNames (SrcIndList target motive base step) =
     (occurringNames target) ++ (occurringNames motive) ++ (occurringNames base) ++ (occurringNames step)
 occurringNames (SrcIndAbsurd target motive) =
     (occurringNames target) ++ (occurringNames motive)
-occurringNames (SrcEq xType from to) =
-    (occurringNames xType) ++ (occurringNames from) ++ (occurringNames to)
+occurringNames (SrcEq eqType from to) =
+    (occurringNames eqType) ++ (occurringNames from) ++ (occurringNames to)
 occurringNames (SrcEqSame e) =
     occurringNames e
 occurringNames (SrcEqReplace target motive base) =
@@ -222,8 +220,6 @@ occurringNames _ =
 
 occurringBinderNames :: (Name, SyntacticTerm) -> [Name]
 occurringBinderNames (x, t) = [x] ++ (occurringNames t)
-
-
 
 inUsedNames :: [Name] -> Name -> Maybe Int
 inUsedNames usedNames x = elemIndex x usedNames

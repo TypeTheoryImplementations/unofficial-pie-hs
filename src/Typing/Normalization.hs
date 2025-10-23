@@ -8,7 +8,7 @@ import Utils.BasicTypes
 import Typing.CoreTypes
 
 -- NOTE: We make use of Haskell's built-in laziness. So we call the function directly and get the Value, but Haskell will automagically memoize it
---     NOTE: This allows use to get rid of all the box and DELAY boilerplate/logic that is present in the reference implementation which is written in Racket
+--  This allows use to get rid of all the box and DELAY boilerplate/logic that is present in the reference implementation which is written in Racket
 
 extendEnv :: Env -> Name -> Value -> Env
 extendEnv env x v = ((x, v):env)
@@ -23,8 +23,8 @@ doAp :: Value -> Value -> Value
 doAp ratorVal randVal =
     case ratorVal of
         LAM _ body -> valOfClosure body randVal
-        NEU (PI _ aType body) ne ->
-            NEU (valOfClosure body randVal) (N_Ap ne (THE aType randVal))
+        NEU (PI _ argType body) ne ->
+            NEU (valOfClosure body randVal) (N_Ap ne (THE argType randVal))
         _ -> error "There is a logic error in the implementation where `doAp` has been called on an invalid target"
 
 doWhichNat :: Value -> Value -> Value -> Value -> Value
@@ -96,15 +96,15 @@ doCar :: Value -> Value
 doCar pVal =
     case pVal of
         (CONS a _) -> a
-        (NEU (SIGMA _ aType _) ne) -> NEU aType (N_Car ne)
+        (NEU (SIGMA _ argType _) ne) -> NEU argType (N_Car ne)
         _ -> error "There is a logic error in the implementation where `doCar` has been called on an invalid target"
 doCdr :: Value -> Value
 doCdr pVal =
     case pVal of
         (CONS _ d) -> d
-        (NEU (SIGMA _ _ dType) ne) ->
+        (NEU (SIGMA _ _ cdrType) ne) ->
             NEU 
-                (valOfClosure dType (doCar pVal))
+                (valOfClosure cdrType (doCar pVal))
                 (N_Cdr ne)
         _ -> error "There is a logic error in the implementation where `doCdr` has been called on an invalid target"
 
@@ -160,31 +160,31 @@ doReplace :: Value -> Value -> Value -> Value
 doReplace targetVal motiveVal baseVal =
     case targetVal of
         (SAME _) -> baseVal
-        (NEU (EQUAL aTypeVal fromVal toVal) ne) ->
+        (NEU (EQUAL eqTypeVal fromVal toVal) ne) ->
             NEU (doAp motiveVal toVal)
                 (N_Replace ne
-                    (THE (PI "x" aTypeVal (HO_CLOS (\_ -> UNIVERSE))) motiveVal)
+                    (THE (PI "x" eqTypeVal (HO_CLOS (\_ -> UNIVERSE))) motiveVal)
                     (THE (doAp motiveVal fromVal) baseVal))
         _ -> error "There is a logic error in the implementation where `doReplace` has been called on an invalid target"
 doTrans :: Value -> Value -> Value
 doTrans target1Val target2Val =
     case (target1Val, target2Val) of
         ((SAME val), (SAME _)) -> SAME val
-        ((SAME fromVal), (NEU (EQUAL aTypeVal _ toVal) ne2)) ->
+        ((SAME fromVal), (NEU (EQUAL eqTypeVal _ toVal) ne2)) ->
             NEU
-                (EQUAL aTypeVal fromVal toVal)
+                (EQUAL eqTypeVal fromVal toVal)
                 (N_Trans2
-                                (THE (EQUAL aTypeVal fromVal fromVal) (SAME fromVal))
+                                (THE (EQUAL eqTypeVal fromVal fromVal) (SAME fromVal))
                                 ne2)
-        ((NEU (EQUAL aTypeVal fromVal _) ne1), (SAME toVal)) ->
+        ((NEU (EQUAL eqTypeVal fromVal _) ne1), (SAME toVal)) ->
             NEU
-                (EQUAL aTypeVal fromVal toVal)
+                (EQUAL eqTypeVal fromVal toVal)
                 (N_Trans1
                                 ne1
-                                (THE (EQUAL aTypeVal toVal toVal) (SAME toVal)))
-        (NEU (EQUAL aTypeVal fromVal _) ne1, (NEU (EQUAL _ _ toVal) ne2)) ->
+                                (THE (EQUAL eqTypeVal toVal toVal) (SAME toVal)))
+        (NEU (EQUAL eqTypeVal fromVal _) ne1, (NEU (EQUAL _ _ toVal) ne2)) ->
             NEU
-                (EQUAL aTypeVal fromVal toVal)
+                (EQUAL eqTypeVal fromVal toVal)
                 (N_Trans12 ne1 ne2)
         _ -> error "There is a logic error in the implementation where `doTrans` has been called on an invalid target"
 doCong :: Value -> Value -> Value -> Value
@@ -200,20 +200,20 @@ doSymm :: Value -> Value
 doSymm targetVal =
     case targetVal of
         (SAME val) -> (SAME val)
-        (NEU (EQUAL aTypeVal fromVal toVal) ne) ->
-            (NEU (EQUAL aTypeVal toVal fromVal) (N_Symm ne))
+        (NEU (EQUAL eqTypeVal fromVal toVal) ne) ->
+            (NEU (EQUAL eqTypeVal toVal fromVal) (N_Symm ne))
         _ -> error "There is a logic error in the implementation where `doSymm` has been called on an invalid target"
 doIndEq :: Value -> Value -> Value -> Value
 doIndEq targetVal motiveVal baseVal =
     case targetVal of
         (SAME _) -> baseVal
-        (NEU (EQUAL aTypeVal fromVal toVal) ne) ->
+        (NEU (EQUAL eqTypeVal fromVal toVal) ne) ->
             NEU
                 (doAp (doAp motiveVal toVal) targetVal)
                 (N_Ind_Eq ne
                     (THE
-                        (PI "to" aTypeVal (HO_CLOS (\to ->
-                            PI "p" (EQUAL aTypeVal fromVal to) (HO_CLOS (\_ ->
+                        (PI "to" eqTypeVal (HO_CLOS (\to ->
+                            PI "p" (EQUAL eqTypeVal fromVal to) (HO_CLOS (\_ ->
                                 UNIVERSE)))))
                         motiveVal)
                     (THE
@@ -312,11 +312,11 @@ reflect _ CoreU = UNIVERSE
 reflect _ CoreNat = NAT
 reflect _ CoreNatZero = ZERO
 reflect env (CoreNatAdd1 n) = ADD1 (reflect env n)
-reflect env (CorePi x aType bType) =
-    let aTypeVal = reflect env aType
-    in PI x aTypeVal (FO_CLOS env x bType)
-reflect env (CoreLambda x bType) =
-    LAM x (FO_CLOS env x bType)
+reflect env (CorePi argName argType returnType) =
+    let argTypeVal = reflect env argType
+    in PI argName argTypeVal (FO_CLOS env argName returnType)
+reflect env (CoreLambda argName body) =
+    LAM argName (FO_CLOS env argName body)
 reflect env (CoreWhichNat target (The baseType base) step) =
     doWhichNat (reflect env target) (reflect env baseType) (reflect env base) (reflect env step)
 reflect env (CoreIterNat target (The baseType base) step) =
@@ -326,9 +326,9 @@ reflect env (CoreRecNat target (The baseType base) step) =
 reflect env (CoreIndNat target motive base step) =
     doIndNat (reflect env target) (reflect env motive) (reflect env base) (reflect env step)
 reflect _ (CoreAtom) = ATOM
-reflect env (CoreSigma x aType dType) =
-    let aTypeVal = reflect env aType
-    in SIGMA x aTypeVal (FO_CLOS env x dType)
+reflect env (CoreSigma carName carType cdrType) =
+    let carTypeVal = reflect env carType
+    in SIGMA carName carTypeVal (FO_CLOS env carName cdrType)
 reflect env (CoreCons a d) =
     CONS (reflect env a) (reflect env d)
 reflect env (CoreCar p) =
@@ -350,8 +350,8 @@ reflect env (CoreRecList target (The baseType base) step) =
 reflect _ CoreAbsurd = ABSURD
 reflect env (CoreIndAbsurd target motive) =
     doIndAbsurd (reflect env target) (reflect env motive)
-reflect env (CoreEq aType from to) =
-    EQUAL (reflect env aType) (reflect env from) (reflect env to)
+reflect env (CoreEq eqType from to) =
+    EQUAL (reflect env eqType) (reflect env from) (reflect env to)
 reflect env (CoreEqSame e) =
     SAME (reflect env e)
 reflect env (CoreReplace target motive base) =
@@ -406,24 +406,24 @@ ctxToEnv [] = []
 readBackType :: Context -> Value -> CoreTerm
 readBackType _ UNIVERSE = CoreU
 readBackType _ NAT = CoreNat
-readBackType ctx (PI x xTypeVal clos) =
-    let xTypeTerm       = readBackType ctx xTypeVal
-        xPrime          = fresh ctx x
-        ctxUnderXPrime  = bindFree ctx xPrime xTypeVal
-    in (CorePi xPrime xTypeTerm (readBackType ctxUnderXPrime (valOfClosure clos (NEU xTypeVal (N_Var xPrime)))))
+readBackType ctx (PI argName argTypeVal clos) =
+    let argTypeTerm     = readBackType ctx argTypeVal
+        newArgName      = fresh ctx argName
+        ctxUnderNewArgName  = bindFree ctx newArgName argTypeVal
+    in (CorePi newArgName argTypeTerm (readBackType ctxUnderNewArgName (valOfClosure clos (NEU argTypeVal (N_Var newArgName)))))
 readBackType _ ATOM = CoreAtom
-readBackType ctx (SIGMA x xTypeVal clos) =
-    let xTypeTerm       = readBackType ctx xTypeVal
-        xPrime          = fresh ctx x
-        ctxUnderXPrime  = bindFree ctx xPrime xTypeVal
-    in (CoreSigma xPrime xTypeTerm (readBackType ctxUnderXPrime (valOfClosure clos (NEU xTypeVal (N_Var xPrime)))))
+readBackType ctx (SIGMA carName carTypeVal clos) =
+    let carTypeTerm         = readBackType ctx carTypeVal
+        newCarName          = fresh ctx carName
+        ctxUnderNewCarName  = bindFree ctx newCarName carTypeVal
+    in (CoreSigma newCarName carTypeTerm (readBackType ctxUnderNewCarName (valOfClosure clos (NEU carTypeVal (N_Var newCarName)))))
 readBackType _ TRIVIAL = CoreTrivial
-readBackType ctx (LIST eTypeVal) = (CoreList (readBackType ctx eTypeVal))
+readBackType ctx (LIST elementTypeVal) = (CoreList (readBackType ctx elementTypeVal))
 readBackType _ ABSURD = CoreAbsurd
-readBackType ctx (EQUAL xTypeVal fromVal toVal) =
-    CoreEq (readBackType ctx xTypeVal) (readBack ctx xTypeVal fromVal) (readBack ctx xTypeVal toVal)
-readBackType ctx (VEC eTypeVal lenVal) =
-    CoreVec (readBackType ctx eTypeVal) (readBack ctx NAT lenVal)
+readBackType ctx (EQUAL eqTypeVal fromVal toVal) =
+    CoreEq (readBackType ctx eqTypeVal) (readBack ctx eqTypeVal fromVal) (readBack ctx eqTypeVal toVal)
+readBackType ctx (VEC elementTypeVal lenVal) =
+    CoreVec (readBackType ctx elementTypeVal) (readBack ctx NAT lenVal)
 readBackType ctx (EITHER leftVal rightVal) =
     CoreEither (readBackType ctx leftVal) (readBackType ctx rightVal)
 readBackType ctx (NEU UNIVERSE ne) =
@@ -435,28 +435,28 @@ readBack ctx UNIVERSE v = readBackType ctx v
 readBack _ NAT ZERO = CoreNatZero
 readBack ctx NAT (ADD1 nMinus1) =
     CoreNatAdd1 (readBack ctx NAT nMinus1)
-readBack ctx (PI x xType clos) f =
-    let y = case f of
-                (LAM yPrime _) -> yPrime
-                _ -> x
-        xPrime = fresh ctx y
-        neuVal = NEU xType (N_Var xPrime)
-    in (CoreLambda xPrime (readBack (bindFree ctx xPrime xType) (valOfClosure clos neuVal) (doAp f neuVal)))
-readBack ctx (SIGMA _ xType clos) pVal =
+readBack ctx (PI argName argType clos) func =
+    let actualArgName = case func of
+                        (LAM fArgName _) -> fArgName
+                        _ -> argName
+        newArgName = fresh ctx actualArgName
+        neuVal = NEU argType (N_Var newArgName)
+    in (CoreLambda newArgName (readBack (bindFree ctx newArgName argType) (valOfClosure clos neuVal) (doAp func neuVal)))
+readBack ctx (SIGMA _ carType clos) pVal =
     let car = doCar pVal
-    in (CoreCons (readBack ctx xType car) (readBack ctx (valOfClosure clos car) (doCdr pVal)))
+    in (CoreCons (readBack ctx carType car) (readBack ctx (valOfClosure clos car) (doCdr pVal)))
 readBack _ ATOM (QUOTE a) = CoreAtomLiteral a
 readBack _ TRIVIAL _ = CoreTrivialSole -- NOTE: η-expansion
 readBack _ (LIST _) NIL = CoreListNil
-readBack ctx (LIST eType) (LIST_COLON_COLON h t) =
-    CoreListColonColon (readBack ctx eType h) (readBack ctx (LIST eType) t)
+readBack ctx (LIST elementType) (LIST_COLON_COLON h t) =
+    CoreListColonColon (readBack ctx elementType h) (readBack ctx (LIST elementType) t)
 -- NOTE: This is apparently half of an η law with the other half being in `alphaEquiv`???
 readBack ctx ABSURD (NEU _ ne) =
     CoreThe $ The CoreAbsurd (readBackNeutral ctx ne)
-readBack ctx (EQUAL xType _ _) (SAME v) = CoreEqSame (readBack ctx xType v)
+readBack ctx (EQUAL eqType _ _) (SAME v) = CoreEqSame (readBack ctx eqType v)
 readBack _ (VEC _ ZERO) _ = CoreVecNil
-readBack ctx (VEC xType (ADD1 lenMinus1)) (VEC_COLON_COLON h t) =
-    CoreVecColonColon (readBack ctx xType h) (readBack ctx (VEC xType lenMinus1) t)
+readBack ctx (VEC elementType (ADD1 lenMinus1)) (VEC_COLON_COLON h t) =
+    CoreVecColonColon (readBack ctx elementType h) (readBack ctx (VEC elementType lenMinus1) t)
 readBack ctx (EITHER leftType _) (LEFT leftVal) =
     CoreEitherLeft (readBack ctx leftType leftVal)
 readBack ctx (EITHER _ rightType) (RIGHT rightVal) =
@@ -492,9 +492,9 @@ readBackNeutral ctx (N_Trans1 ne (THE t v)) =
     CoreTrans (readBackNeutral ctx ne) (readBack ctx t v)
 readBackNeutral ctx (N_Trans2 (THE t v) ne) =
     CoreTrans (readBack ctx t v) (readBackNeutral ctx ne)
-readBackNeutral ctx (N_Cong ne (THE (PI y yTypeVal clos) val)) =
+readBackNeutral ctx (N_Cong ne (THE (PI argName argTypeVal clos) val)) =
 -- NOTE: The reason `valOfClosure clos ABSURD` is valid is because the only place `N_Cong` is constructed (`doCong`), the lambda ignores its parameter.
-    CoreCong (readBackNeutral ctx ne) (readBackType ctx (valOfClosure clos ABSURD)) (readBack ctx (PI y yTypeVal clos) val)
+    CoreCong (readBackNeutral ctx ne) (readBackType ctx (valOfClosure clos ABSURD)) (readBack ctx (PI argName argTypeVal clos) val)
 readBackNeutral ctx (N_Symm ne) =
     CoreSymm (readBackNeutral ctx ne)
 readBackNeutral ctx (N_Ind_Eq ne (THE motiveTypeVal motiveVal) (THE baseTypeVal baseVal)) =

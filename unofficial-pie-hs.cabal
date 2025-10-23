@@ -1,7 +1,7 @@
 cabal-version:      3.4
 
 name:               unofficial-pie-hs
-version:            1.0.0.0
+version:            1.0.1.0
 synopsis:           An unofficial implementation of Pie in Haskell
 description:        This is an easy to understand unofficial reimplementation of the Pie language from The Little Typer written in Haskell.
 category:           Text

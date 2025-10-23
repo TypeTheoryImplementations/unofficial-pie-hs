@@ -10,17 +10,17 @@ import Typing.Normalization
 import Typing.CoreTypes
 
 typingSynth :: Context -> Renaming -> SyntacticTerm -> Maybe The
-typingSynth ctx r (SrcVar x) = do -- Hypothesis
-    let realX = rename r x
-    varTypeVal <- typingLookup ctx realX
-    return $ The (readBackType ctx varTypeVal) (CoreVar realX)
+typingSynth ctx r (SrcVar varName) = do -- Hypothesis
+    let realVarName = rename r varName
+    varTypeVal <- typingLookup ctx realVarName
+    return $ The (readBackType ctx varTypeVal) (CoreVar realVarName)
 typingSynth _ _ (SrcAtomLiteral sym) =  -- AtomI
     return $ The CoreAtom (CoreAtomLiteral sym)
 typingSynth ctx r (SrcCar pr) = do -- SigmaE-1
     (The prType prOut) <- typingSynth ctx r pr
     case valInCtx ctx prType of
-        (SIGMA _ xType _) ->
-            return $ The (readBackType ctx xType) (CoreCar prOut)
+        (SIGMA _ carType _) ->
+            return $ The (readBackType ctx carType) (CoreCar prOut)
         _ -> Nothing
 typingSynth ctx r (SrcCdr pr) = do -- SigmaE-2
     (The prType prOut) <- typingSynth ctx r pr
@@ -28,21 +28,21 @@ typingSynth ctx r (SrcCdr pr) = do -- SigmaE-2
         (SIGMA _ _ clos) ->
             return $ The (readBackType ctx (valOfClosure clos (doCar (valInCtx ctx prOut)))) (CoreCdr prOut)
         _ -> Nothing
-typingSynth ctx r (SrcApplication f [arg]) = do -- FunE-1
-    (The fType fOut) <- typingSynth ctx r f
-    case valInCtx ctx fType of
-        (PI _ xType clos) -> do
-            argOut <- typingCheck ctx r arg xType
+typingSynth ctx r (SrcApplication func [arg]) = do -- FunE-1
+    (The funcType funcOut) <- typingSynth ctx r func
+    case valInCtx ctx funcType of
+        (PI _ carType clos) -> do
+            argOut <- typingCheck ctx r arg carType
             let argOutVal = valInCtx ctx argOut
-            return $ The (readBackType ctx (valOfClosure clos argOutVal)) (CoreApplication fOut argOut)
+            return $ The (readBackType ctx (valOfClosure clos argOutVal)) (CoreApplication funcOut argOut)
         _ -> Nothing
-typingSynth ctx r (SrcApplication f args) = do -- FunE-2
-    (The appFType appFOut) <- typingSynth ctx r (SrcApplication f (init args))
-    case valInCtx ctx appFType of
-        (PI _ xType clos) -> do
-            argOut <- typingCheck ctx r (last args) xType
+typingSynth ctx r (SrcApplication func args) = do -- FunE-2
+    (The appFuncType appFuncOut) <- typingSynth ctx r (SrcApplication func (init args))
+    case valInCtx ctx appFuncType of
+        (PI _ carType clos) -> do
+            argOut <- typingCheck ctx r (last args) carType
             let argOutVal = valInCtx ctx argOut
-            return $ The (readBackType ctx (valOfClosure clos argOutVal)) (CoreApplication appFOut argOut)
+            return $ The (readBackType ctx (valOfClosure clos argOutVal)) (CoreApplication appFuncOut argOut)
         _ -> Nothing
 typingSynth _ _ SrcNatZero = -- NatI-1
     return $ The CoreNat CoreNatZero
@@ -80,59 +80,59 @@ typingSynth ctx r (SrcIndNat target motive base step) = do -- NatE-4
     baseOut <- typingCheck ctx r base (doAp motiveOutVal ZERO)
     stepOut <- typingCheck ctx r step (PI "nMinus1" NAT (HO_CLOS (\nMinus1 -> PI "ih" (doAp motiveOutVal nMinus1) (HO_CLOS (\_ -> doAp motiveOutVal (ADD1 nMinus1))))))
     return $ The (CoreApplication motiveOut targetOut) (CoreIndNat targetOut motiveOut baseOut stepOut)
-typingSynth ctx r (SrcListColonColon e es) = do -- ListI-2
-    (The eType eOut) <- typingSynth ctx r e
-    esOut <- typingCheck ctx r es (valInCtx ctx (CoreList eType))
-    return $ The (CoreList eType) (CoreListColonColon eOut esOut)
+typingSynth ctx r (SrcListColonColon h t) = do -- ListI-2
+    (The headType headOut) <- typingSynth ctx r h
+    esOut <- typingCheck ctx r t (valInCtx ctx (CoreList headType))
+    return $ The (CoreList headType) (CoreListColonColon headOut esOut)
 typingSynth ctx r (SrcRecList target base step) = do -- ListE-1
     (The targetType targetOut) <- typingSynth ctx r target
     case valInCtx ctx targetType of
-        (LIST eType) -> do
+        (LIST elementType) -> do
             (The baseType baseOut) <- typingSynth ctx r base
             let baseTypeVal = valInCtx ctx baseType
-            stepOut <- typingCheck ctx r step (PI "e" eType (HO_CLOS (\_ -> PI "es" (LIST eType) (HO_CLOS (\_ -> PI "ih" baseTypeVal (HO_CLOS (\_ -> baseTypeVal)))))))
+            stepOut <- typingCheck ctx r step (PI "e" elementType (HO_CLOS (\_ -> PI "es" (LIST elementType) (HO_CLOS (\_ -> PI "ih" baseTypeVal (HO_CLOS (\_ -> baseTypeVal)))))))
             return $ The baseType (CoreRecList targetOut (The baseType baseOut) stepOut)
         _ -> Nothing
 typingSynth ctx r (SrcIndList target motive base step) = do -- ListE-2
     (The targetType targetOut) <- typingSynth ctx r target
     case valInCtx ctx targetType of
-        (LIST eType) -> do
-            motiveOut <- typingCheck ctx r motive (PI "xs" (LIST eType) (FO_CLOS (ctxToEnv ctx) "xs" CoreU))
+        (LIST elementType) -> do
+            motiveOut <- typingCheck ctx r motive (PI "xs" (LIST elementType) (FO_CLOS (ctxToEnv ctx) "xs" CoreU))
             let motiveOutVal = valInCtx ctx motiveOut
             baseOut <- typingCheck ctx r base (doAp motiveOutVal NIL)
-            stepOut <- typingCheck ctx r step (PI "e" eType (HO_CLOS (\e -> PI "es" (LIST eType) (HO_CLOS (\es -> PI "ih" (doAp motiveOutVal es) (HO_CLOS (\_ -> doAp motiveOutVal (LIST_COLON_COLON e es))))))))
+            stepOut <- typingCheck ctx r step (PI "e" elementType (HO_CLOS (\e -> PI "es" (LIST elementType) (HO_CLOS (\es -> PI "ih" (doAp motiveOutVal es) (HO_CLOS (\_ -> doAp motiveOutVal (LIST_COLON_COLON e es))))))))
             return $ The (CoreApplication motiveOut targetOut) (CoreIndList targetOut motiveOut baseOut stepOut)
         _ -> Nothing
 typingSynth ctx r (SrcHead es) = do -- VecE-1
     (The esTypeOut esOut) <- typingSynth ctx r es
     case valInCtx ctx esTypeOut of
-        (VEC eTypeVal (ADD1 _)) ->
-            return $ The (readBackType ctx eTypeVal) (CoreHead esOut)
+        (VEC elementTypeVal (ADD1 _)) ->
+            return $ The (readBackType ctx elementTypeVal) (CoreHead esOut)
         _ -> Nothing
 typingSynth ctx r (SrcTail es) = do -- VecE-2
     (The esTypeOut esOut) <- typingSynth ctx r es
     case valInCtx ctx esTypeOut of
-        (VEC eTypeVal (ADD1 lenMinus1)) ->
-            return $ The (CoreVec (readBackType ctx eTypeVal) (readBack ctx NAT lenMinus1)) (CoreTail esOut)
+        (VEC elementTypeVal (ADD1 lenMinus1)) ->
+            return $ The (CoreVec (readBackType ctx elementTypeVal) (readBack ctx NAT lenMinus1)) (CoreTail esOut)
         _ -> Nothing
 typingSynth ctx r (SrcIndVec len target motive base step) = do -- VecE-3
     lenOut <- typingCheck ctx r len NAT
     let lenOutVal = valInCtx ctx lenOut
     (The vecType vecOut) <- typingSynth ctx r target
     case valInCtx ctx vecType of
-        (VEC eTypeVal vecLenVal) -> do
+        (VEC elementTypeVal vecLenVal) -> do
             _ <- convert ctx NAT lenOutVal vecLenVal
-            motiveOut <- typingCheck ctx r motive (PI "k" NAT (HO_CLOS (\k -> PI "es" (VEC eTypeVal k) (HO_CLOS (\_ -> UNIVERSE)))))
+            motiveOut <- typingCheck ctx r motive (PI "k" NAT (HO_CLOS (\k -> PI "es" (VEC elementTypeVal k) (HO_CLOS (\_ -> UNIVERSE)))))
             let motiveOutVal = valInCtx ctx motiveOut
             baseOut <- typingCheck ctx r base (doAp (doAp motiveOutVal ZERO) VECNIL)
-            stepOut <- typingCheck ctx r step (indVecStepType eTypeVal motiveOutVal)
+            stepOut <- typingCheck ctx r step (indVecStepType elementTypeVal motiveOutVal)
             return $ The (CoreApplication motiveOut lenOut) (CoreIndVec lenOut vecOut motiveOut baseOut stepOut)
         _ -> Nothing
 typingSynth ctx r (SrcEqReplace target motive base) = do -- EqE-1
     (The targetType targetOut) <- typingSynth ctx r target
     case valInCtx ctx targetType of
-        (EQUAL xTypeVal fromVal toVal) -> do
-            motiveOut <- typingCheck ctx r motive (PI "x" xTypeVal (HO_CLOS (\_ -> UNIVERSE)))
+        (EQUAL eqTypeVal fromVal toVal) -> do
+            motiveOut <- typingCheck ctx r motive (PI "x" eqTypeVal (HO_CLOS (\_ -> UNIVERSE)))
             let motiveOutVal = valInCtx ctx motiveOut
             baseOut <- typingCheck ctx r base (doAp motiveOutVal fromVal)
             return $ The (readBackType ctx (doAp motiveOutVal toVal)) (CoreReplace targetOut motiveOut baseOut)
@@ -141,8 +141,8 @@ typingSynth ctx r (SrcEqCong target func) = do -- EqE-2
     (The targetType targetOut) <- typingSynth ctx r target
     (The funcType funcOut) <- typingSynth ctx r func
     case (valInCtx ctx targetType, valInCtx ctx funcType) of
-        ((EQUAL xTypeVal fromVal toVal), (PI _ domainTypeVal clos)) -> do
-            _ <- sameType ctx xTypeVal domainTypeVal
+        ((EQUAL eqTypeVal fromVal toVal), (PI _ domainTypeVal clos)) -> do
+            _ <- sameType ctx eqTypeVal domainTypeVal
 -- NOTE: The reference implementation of Pie is missing the below `sameType` check.
 --  The inference rule requires that the codomain type of the pi type be independent of the domain parameter (i.e. be an arrow type),
 --  but since there is no easy way to check independence, it is instead sufficient to check that the endpoints are within the same fiber.
@@ -156,26 +156,26 @@ typingSynth ctx r (SrcEqCong target func) = do -- EqE-2
                 (CoreEq coDomainTypeOut (readBack ctx coDomainTypeVal (doAp funcVal fromVal)) (readBack ctx coDomainTypeVal (doAp funcVal toVal)))
                 (CoreCong targetOut coDomainTypeOut funcOut)
         _ -> Nothing
-typingSynth ctx r (SrcEqSymm t) = do -- EqE-3
-    (The tType tOut) <- typingSynth ctx r t
-    case valInCtx ctx tType of
-        (EQUAL xTypeVal fromVal toVal) ->
-            return $ The (readBackType ctx (EQUAL xTypeVal toVal fromVal)) (CoreSymm tOut)
+typingSynth ctx r (SrcEqSymm eqExpr) = do -- EqE-3
+    (The eqExprType eqExprOut) <- typingSynth ctx r eqExpr
+    case valInCtx ctx eqExprType of
+        (EQUAL eqTypeVal fromVal toVal) ->
+            return $ The (readBackType ctx (EQUAL eqTypeVal toVal fromVal)) (CoreSymm eqExprOut)
         _ -> Nothing
 typingSynth ctx r (SrcEqTrans t1 t2) = do -- EqE-4
     (The t1Type t1Out) <- typingSynth ctx r t1
     (The t2Type t2Out) <- typingSynth ctx r t2
     case (valInCtx ctx t1Type, valInCtx ctx t2Type) of
-        ((EQUAL xTypeVal fromVal midVal), (EQUAL yTypeVal mid2Val toVal)) -> do
-            _ <- sameType ctx xTypeVal yTypeVal
-            _ <- convert ctx xTypeVal midVal mid2Val
-            return $ The (readBackType ctx (EQUAL xTypeVal fromVal toVal)) (CoreTrans t1Out t2Out)
+        ((EQUAL eqType1Val fromVal midVal), (EQUAL eqType2Val mid2Val toVal)) -> do
+            _ <- sameType ctx eqType1Val eqType2Val
+            _ <- convert ctx eqType1Val midVal mid2Val
+            return $ The (readBackType ctx (EQUAL eqType1Val fromVal toVal)) (CoreTrans t1Out t2Out)
         _ -> Nothing
 typingSynth ctx r (SrcEqIndEq target motive base) = do -- EqE-5: Based Path Induction (aka: Parameter-variant of the J-eliminator)
     (The targetType targetOut) <- typingSynth ctx r target
     case valInCtx ctx targetType of
-        (EQUAL xTypeVal fromVal toVal) -> do
-            motiveOut <- typingCheck ctx r motive (PI "to" xTypeVal (HO_CLOS (\to -> PI "p" (EQUAL xTypeVal fromVal to) (HO_CLOS (\_ -> UNIVERSE)))))
+        (EQUAL eqTypeVal fromVal toVal) -> do
+            motiveOut <- typingCheck ctx r motive (PI "to" eqTypeVal (HO_CLOS (\to -> PI "p" (EQUAL eqTypeVal fromVal to) (HO_CLOS (\_ -> UNIVERSE)))))
             let motiveOutVal = valInCtx ctx motiveOut
             baseOut <- typingCheck ctx r base (doAp (doAp motiveOutVal fromVal) (SAME fromVal))
             return $ The (readBackType ctx (doAp (doAp motiveOutVal toVal) (valInCtx ctx targetOut))) (CoreIndEq targetOut motiveOut baseOut)
@@ -198,70 +198,71 @@ typingSynth ctx r (SrcIndAbsurd target motive) = do -- AbsurdE
     return $ The motiveOut (CoreIndAbsurd targetOut motiveOut)
 typingSynth _ _ SrcAtom = -- UI-1
     return $ The CoreU CoreAtom
-typingSynth ctx r (SrcSigma [(x, aType)] dType) = do -- UI-2
-    let xPrime = fresh ctx x
-    aTypeOut <- typingCheck ctx r aType UNIVERSE
-    let aTypeOutVal = valInCtx ctx aTypeOut
-    dTypeOut <- typingCheck (bindFree ctx xPrime aTypeOutVal) (extendRenaming r x xPrime) dType UNIVERSE
-    return $ The CoreU (CoreSigma xPrime aTypeOut dTypeOut)
-typingSynth ctx r (SrcSigma ((x, aType):aRest) dType) = do -- UI-3
-    let xPrime = fresh ctx x
-    aTypeOut <- typingCheck ctx r aType UNIVERSE
-    let aTypeOutVal = valInCtx ctx aTypeOut
-    dTypeOut <- typingCheck (bindFree ctx xPrime aTypeOutVal) (extendRenaming r x xPrime) (SrcSigma aRest dType) UNIVERSE
-    return $ The CoreU (CoreSigma xPrime aTypeOut dTypeOut)
-typingSynth ctx r (SrcPair aType dType) = do -- UI-4
+typingSynth ctx r (SrcSigma [(carName, carType)] cdrType) = do -- UI-2
+    let newCarName = fresh ctx carName
+    carTypeOut <- typingCheck ctx r carType UNIVERSE
+    let carTypeOutVal = valInCtx ctx carTypeOut
+    cdrTypeOut <- typingCheck (bindFree ctx newCarName carTypeOutVal) (extendRenaming r carName newCarName) cdrType UNIVERSE
+    return $ The CoreU (CoreSigma newCarName carTypeOut cdrTypeOut)
+typingSynth ctx r (SrcSigma ((carName, carType):otherNamedFields) cdrType) = do -- UI-3
+    let newCarName = fresh ctx carName
+    carTypeOut <- typingCheck ctx r carType UNIVERSE
+    let carTypeOutVal = valInCtx ctx carTypeOut
+    cdrTypeOut <- typingCheck (bindFree ctx newCarName carTypeOutVal) (extendRenaming r carName newCarName) (SrcSigma otherNamedFields cdrType) UNIVERSE
+    return $ The CoreU (CoreSigma newCarName carTypeOut cdrTypeOut)
+typingSynth ctx r (SrcPair carType cdrType) = do -- UI-4
 -- NOTE: I believe there is a bug in the reference implementation of UI-4.
 --  They call `fresh` below instead of `fresh-binder`, but they call `fresh-binder` for `Pair` in `is-type`.
 --  The `isType` and `UI-4` implementations are otherwise identical in terms of the inference rules and implementations besides the return value (annotation vs type).
-    let x = freshBinder ctx dType "x"
-    aTypeOut <- typingCheck ctx r aType UNIVERSE
-    let aTypeOutVal = valInCtx ctx aTypeOut
-    dTypeOut <- typingCheck (bindFree ctx x aTypeOutVal) r dType UNIVERSE
-    return $ The CoreU (CoreSigma x aTypeOut dTypeOut)
-typingSynth ctx r (SrcPi [(x, xType)] rType) = do -- UI-5
-    let xPrime = fresh ctx x
-    xTypeOut <- typingCheck ctx r xType UNIVERSE
-    let xTypeOutVal = valInCtx ctx xTypeOut
-    rTypeOut <- typingCheck (bindFree ctx xPrime xTypeOutVal) (extendRenaming r x xPrime) rType UNIVERSE
-    return $ The CoreU (CorePi xPrime xTypeOut rTypeOut)
-typingSynth ctx r (SrcPi ((x, xType):xRest) rType) = do -- UI-6
-    let xPrime = fresh ctx x
-    xTypeOut <- typingCheck ctx r xType UNIVERSE
-    let xTypeOutVal = valInCtx ctx xTypeOut
-    rTypeOut <- typingCheck (bindFree ctx xPrime xTypeOutVal) (extendRenaming r x xPrime) (SrcPi xRest rType) UNIVERSE
-    return $ The CoreU (CorePi xPrime xTypeOut rTypeOut)
-typingSynth ctx r (SrcArrow argType [rType]) = do -- UI-7
-    let x = freshBinder ctx rType "x"
+    let carName = freshBinder ctx cdrType "x"
+    carTypeOut <- typingCheck ctx r carType UNIVERSE
+    let carTypeOutVal = valInCtx ctx carTypeOut
+    cdrTypeOut <- typingCheck (bindFree ctx carName carTypeOutVal) r cdrType UNIVERSE
+    return $ The CoreU (CoreSigma carName carTypeOut cdrTypeOut)
+typingSynth ctx r (SrcPi [(argName, argType)] returnType) = do -- UI-5
+    let newArgName = fresh ctx argName
     argTypeOut <- typingCheck ctx r argType UNIVERSE
     let argTypeOutVal = valInCtx ctx argTypeOut
-    rTypeOut <- typingCheck (bindFree ctx x argTypeOutVal) r rType UNIVERSE
-    return $ The CoreU (CorePi x argTypeOut rTypeOut)
-typingSynth ctx r (SrcArrow argType (rType1:rType2:rRest)) = do -- UI-8
-    let x = freshBinder ctx (SrcApplication rType2 rRest) "x"
+    returnTypeOut <- typingCheck (bindFree ctx newArgName argTypeOutVal) (extendRenaming r argName newArgName) returnType UNIVERSE
+    return $ The CoreU (CorePi newArgName argTypeOut returnTypeOut)
+typingSynth ctx r (SrcPi ((argName, argType):otherNamedArgs) returnType) = do -- UI-6
+    let newArgName = fresh ctx argName
     argTypeOut <- typingCheck ctx r argType UNIVERSE
     let argTypeOutVal = valInCtx ctx argTypeOut
-    rTypeOut <- typingCheck (bindFree ctx x argTypeOutVal) r (SrcArrow rType1 (rType2:rRest)) UNIVERSE
-    return $ The CoreU (CorePi x argTypeOut rTypeOut)
+    returnTypeOut <- typingCheck (bindFree ctx newArgName argTypeOutVal) (extendRenaming r argName newArgName) (SrcPi otherNamedArgs returnType) UNIVERSE
+    return $ The CoreU (CorePi newArgName argTypeOut returnTypeOut)
+typingSynth ctx r (SrcArrow argType [returnType]) = do -- UI-7
+    let argName = freshBinder ctx returnType "x"
+    argTypeOut <- typingCheck ctx r argType UNIVERSE
+    let argTypeOutVal = valInCtx ctx argTypeOut
+    returnTypeOut <- typingCheck (bindFree ctx argName argTypeOutVal) r returnType UNIVERSE
+    return $ The CoreU (CorePi argName argTypeOut returnTypeOut)
+typingSynth ctx r (SrcArrow argType (returnType1:returnType2:restOfReturnTypes)) = do -- UI-8
+-- NOTE: `(SrcApplication returnType1 (returnType2:restOfReturnTypes))` is just a hack to allow us to pass a list of terms that we want to make sure the `argName` does not appear in.
+    let argName = freshBinder ctx (SrcApplication returnType1 (returnType2:restOfReturnTypes)) "x"
+    argTypeOut <- typingCheck ctx r argType UNIVERSE
+    let argTypeOutVal = valInCtx ctx argTypeOut
+    returnTypeOut <- typingCheck (bindFree ctx argName argTypeOutVal) r (SrcArrow returnType1 (returnType2:restOfReturnTypes)) UNIVERSE
+    return $ The CoreU (CorePi argName argTypeOut returnTypeOut)
 typingSynth _ _ SrcNat = -- UI-9
     return $ The CoreU CoreNat
-typingSynth ctx r (SrcList eType) = do -- UI-10
-    eTypeOut <- typingCheck ctx r eType UNIVERSE
-    return $ The CoreU (CoreList eTypeOut)
-typingSynth ctx r (SrcVec eType len) = do -- UI-11
-    eTypeOut <- typingCheck ctx r eType UNIVERSE
+typingSynth ctx r (SrcList elementType) = do -- UI-10
+    elementTypeOut <- typingCheck ctx r elementType UNIVERSE
+    return $ The CoreU (CoreList elementTypeOut)
+typingSynth ctx r (SrcVec elementType len) = do -- UI-11
+    elementTypeOut <- typingCheck ctx r elementType UNIVERSE
     lOut <- typingCheck ctx r len NAT
-    return $ The CoreU (CoreVec eTypeOut lOut)
-typingSynth ctx r (SrcEq xType from to) = do -- UI-12
-    xTypeOut <- typingCheck ctx r xType UNIVERSE
-    let xTypeOutVal = valInCtx ctx xTypeOut
-    fromOut <- typingCheck ctx r from xTypeOutVal
-    toOut <- typingCheck ctx r to xTypeOutVal
-    return $ The CoreU (CoreEq xTypeOut fromOut toOut)
-typingSynth ctx r (SrcEither pType sType) = do -- UI-13
-    pTypeOut <- typingCheck ctx r pType UNIVERSE
-    sTypeOut <- typingCheck ctx r sType UNIVERSE
-    return $ The CoreU (CoreEither pTypeOut sTypeOut)
+    return $ The CoreU (CoreVec elementTypeOut lOut)
+typingSynth ctx r (SrcEq eqType from to) = do -- UI-12
+    eqTypeOut <- typingCheck ctx r eqType UNIVERSE
+    let eqTypeOutVal = valInCtx ctx eqTypeOut
+    fromOut <- typingCheck ctx r from eqTypeOutVal
+    toOut <- typingCheck ctx r to eqTypeOutVal
+    return $ The CoreU (CoreEq eqTypeOut fromOut toOut)
+typingSynth ctx r (SrcEither leftType rightType) = do -- UI-13
+    leftTypeOut <- typingCheck ctx r leftType UNIVERSE
+    rightTypeOut <- typingCheck ctx r rightType UNIVERSE
+    return $ The CoreU (CoreEither leftTypeOut rightTypeOut)
 typingSynth _ _ SrcTrivial = -- UI-14
     return $ The CoreU CoreTrivial
 typingSynth _ _ SrcAbsurd = -- UI-15
@@ -275,67 +276,68 @@ typingSynth _ _ _ = Nothing
 isType :: Context -> Renaming -> SyntacticTerm -> Maybe CoreTerm
 isType _ _ SrcAtom = -- AtomF
     return $ CoreAtom
-isType ctx r (SrcSigma [(x, aType)] dType) = do -- SigmaF-1
-    let xPrime = fresh ctx x
-    aTypeOut <- isType ctx r aType
-    let aTypeOutVal = valInCtx ctx aTypeOut
-    dTypeOut <- isType (bindFree ctx xPrime aTypeOutVal) (extendRenaming r x xPrime) dType
-    return $ CoreSigma xPrime aTypeOut dTypeOut
-isType ctx r (SrcSigma ((x, aType):aRest) dType) = do -- SigmaF-2
-    let xPrime = fresh ctx x
-    aTypeOut <- isType ctx r aType
-    let aTypeOutVal = valInCtx ctx aTypeOut
-    dTypeOut <- isType (bindFree ctx xPrime aTypeOutVal) (extendRenaming r x xPrime) (SrcSigma aRest dType)
-    return $ CoreSigma xPrime aTypeOut dTypeOut
-isType ctx r (SrcPair aType dType) = do -- SigmaF-Pair
-    let x = freshBinder ctx dType "x"
-    aTypeOut <- isType ctx r aType
-    let aTypeOutVal = valInCtx ctx aTypeOut
-    dTypeOut <- isType (bindFree ctx x aTypeOutVal) r dType
-    return $ CoreSigma x aTypeOut dTypeOut
-isType ctx r (SrcPi [(x, argType)] rType) = do -- FunF-1
-    let xPrime = fresh ctx x
+isType ctx r (SrcSigma [(carName, carType)] cdrType) = do -- SigmaF-1
+    let newCarName = fresh ctx carName
+    carTypeOut <- isType ctx r carType
+    let carTypeOutVal = valInCtx ctx carTypeOut
+    cdrTypeOut <- isType (bindFree ctx newCarName carTypeOutVal) (extendRenaming r carName newCarName) cdrType
+    return $ CoreSigma newCarName carTypeOut cdrTypeOut
+isType ctx r (SrcSigma ((carName, carType):otherNamedFields) cdrType) = do -- SigmaF-2
+    let newCarName = fresh ctx carName
+    carTypeOut <- isType ctx r carType
+    let carTypeOutVal = valInCtx ctx carTypeOut
+    cdrTypeOut <- isType (bindFree ctx newCarName carTypeOutVal) (extendRenaming r carName newCarName) (SrcSigma otherNamedFields cdrType)
+    return $ CoreSigma newCarName carTypeOut cdrTypeOut
+isType ctx r (SrcPair carType cdrType) = do -- SigmaF-Pair
+    let carName = freshBinder ctx cdrType "x"
+    carTypeOut <- isType ctx r carType
+    let carTypeOutVal = valInCtx ctx carTypeOut
+    cdrTypeOut <- isType (bindFree ctx carName carTypeOutVal) r cdrType
+    return $ CoreSigma carName carTypeOut cdrTypeOut
+isType ctx r (SrcPi [(argName, argType)] returnType) = do -- FunF-1
+    let newArgName = fresh ctx argName
     argTypeOut <- isType ctx r argType
     let argTypeOutVal = valInCtx ctx argTypeOut
-    rTypeOut <- isType (bindFree ctx xPrime argTypeOutVal) (extendRenaming r x xPrime) rType
-    return $ CorePi xPrime argTypeOut rTypeOut
-isType ctx r (SrcPi ((x, argType):argRest) rType) = do -- FunF-2
-    let xPrime = fresh ctx x
+    returnTypeOut <- isType (bindFree ctx newArgName argTypeOutVal) (extendRenaming r argName newArgName) returnType
+    return $ CorePi newArgName argTypeOut returnTypeOut
+isType ctx r (SrcPi ((argName, argType):otherNamedArgs) returnType) = do -- FunF-2
+    let newArgName = fresh ctx argName
     argTypeOut <- isType ctx r argType
     let argTypeOutVal = valInCtx ctx argTypeOut
-    rTypeOut <- isType (bindFree ctx xPrime argTypeOutVal) (extendRenaming r x xPrime) (SrcPi argRest rType)
-    return $ CorePi xPrime argTypeOut rTypeOut
-isType ctx r (SrcArrow argType [rType]) = do -- FunFArrow-1
-    let x = freshBinder ctx rType "x"
+    returnTypeOut <- isType (bindFree ctx newArgName argTypeOutVal) (extendRenaming r argName newArgName) (SrcPi otherNamedArgs returnType)
+    return $ CorePi newArgName argTypeOut returnTypeOut
+isType ctx r (SrcArrow argType [returnType]) = do -- FunFArrow-1
+    let argName = freshBinder ctx returnType "x"
     argTypeOut <- isType ctx r argType
     let argTypeOutVal = valInCtx ctx argTypeOut
-    rTypeOut <- isType (bindFree ctx x argTypeOutVal) r rType
-    return $ CorePi x argTypeOut rTypeOut
-isType ctx r (SrcArrow argType (rType1:rType2:rRest)) = do -- FunFArrow-2
-    let x = freshBinder ctx (SrcApplication rType2 rRest) "x"
+    returnTypeOut <- isType (bindFree ctx argName argTypeOutVal) r returnType
+    return $ CorePi argName argTypeOut returnTypeOut
+isType ctx r (SrcArrow argType (returnType1:returnType2:restOfReturnTypes)) = do -- FunFArrow-2
+-- NOTE: `(SrcApplication returnType1 (returnType2:restOfReturnTypes))` is just a hack to allow us to pass a list of terms that we want to make sure the `argName` does not appear in.
+    let argName = freshBinder ctx (SrcApplication returnType1 (returnType2:restOfReturnTypes)) "x"
     argTypeOut <- isType ctx r argType
     let argTypeOutVal = valInCtx ctx argTypeOut
-    rTypeOut <- isType (bindFree ctx x argTypeOutVal) r (SrcArrow rType1 (rType2:rRest))
-    return $ CorePi x argTypeOut rTypeOut
+    returnTypeOut <- isType (bindFree ctx argName argTypeOutVal) r (SrcArrow returnType1 (returnType2:restOfReturnTypes))
+    return $ CorePi argName argTypeOut returnTypeOut
 isType _ _ SrcNat = -- NatF
     return $ CoreNat
-isType ctx r (SrcList eType) = do -- ListF
-    eTypeOut <- isType ctx r eType
-    return $ CoreList eTypeOut
-isType ctx r (SrcVec eType l) = do -- VecF
-    eTypeOut <- isType ctx r eType
-    lOut <- typingCheck ctx r l NAT
-    return $ CoreVec eTypeOut lOut
-isType ctx r (SrcEq xType from to) = do -- EqF
-    xTypeOut <- isType ctx r xType
-    let xTypeOutVal = valInCtx ctx xTypeOut
-    fromOut <- typingCheck ctx r from xTypeOutVal
-    toOut <- typingCheck ctx r to xTypeOutVal
-    return $ CoreEq xTypeOut fromOut toOut
-isType ctx r (SrcEither pType sType) = do -- EitherF
-    pTypeOut <- isType ctx r pType
-    sTypeOut <- isType ctx r sType
-    return $ CoreEither pTypeOut sTypeOut
+isType ctx r (SrcList elementType) = do -- ListF
+    elementTypeOut <- isType ctx r elementType
+    return $ CoreList elementTypeOut
+isType ctx r (SrcVec elementType len) = do -- VecF
+    elementTypeOut <- isType ctx r elementType
+    lenOut <- typingCheck ctx r len NAT
+    return $ CoreVec elementTypeOut lenOut
+isType ctx r (SrcEq eqType from to) = do -- EqF
+    eqTypeOut <- isType ctx r eqType
+    let eqTypeOutVal = valInCtx ctx eqTypeOut
+    fromOut <- typingCheck ctx r from eqTypeOutVal
+    toOut <- typingCheck ctx r to eqTypeOutVal
+    return $ CoreEq eqTypeOut fromOut toOut
+isType ctx r (SrcEither leftType rightType) = do -- EitherF
+    leftTypeOut <- isType ctx r leftType
+    rightTypeOut <- isType ctx r rightType
+    return $ CoreEither leftTypeOut rightTypeOut
 isType _ _ SrcTrivial = -- TrivialF
     return $ CoreTrivial
 isType _ _ SrcAbsurd = -- AbsurdF
@@ -345,36 +347,36 @@ isType _ _ SrcU = -- EL
 isType ctx r expr = typingCheck ctx r expr UNIVERSE
 
 typingCheck :: Context -> Renaming -> SyntacticTerm -> Value -> Maybe CoreTerm
-typingCheck ctx r (SrcCons a d) (SIGMA _ aType dType) = do -- SigmaI
-    aOut <- typingCheck ctx r a aType
-    dOut <- typingCheck ctx r d (valOfClosure dType (valInCtx ctx aOut))
-    return $ CoreCons aOut dOut
-typingCheck ctx r (SrcLambda [lambdaX] lambdaR) (PI _ argType rType) = do -- FunI-1
-    let xPrime = fresh ctx lambdaX
-    rOut <- typingCheck (bindFree ctx xPrime argType) (extendRenaming r lambdaX xPrime) lambdaR (valOfClosure rType (NEU argType (N_Var xPrime)))
-    return $ CoreLambda xPrime rOut
-typingCheck ctx r (SrcLambda (lambdaX:lambdaRest) lambdaR) typeVal = -- FunI-2
-    typingCheck ctx r (SrcLambda [lambdaX] (SrcLambda lambdaRest lambdaR)) typeVal
+typingCheck ctx r (SrcCons car cdr) (SIGMA _ carType cdrType) = do -- SigmaI
+    carOut <- typingCheck ctx r car carType
+    cdrOut <- typingCheck ctx r cdr (valOfClosure cdrType (valInCtx ctx carOut))
+    return $ CoreCons carOut cdrOut
+typingCheck ctx r (SrcLambda [argName] lambdaBody) (PI _ argType returnType) = do -- FunI-1
+    let newArgName = fresh ctx argName
+    returnOut <- typingCheck (bindFree ctx newArgName argType) (extendRenaming r argName newArgName) lambdaBody (valOfClosure returnType (NEU argType (N_Var newArgName)))
+    return $ CoreLambda newArgName returnOut
+typingCheck ctx r (SrcLambda (argName:otherArgNames) lambdaBody) typeVal = -- FunI-2
+    typingCheck ctx r (SrcLambda [argName] (SrcLambda otherArgNames lambdaBody)) typeVal
 typingCheck _ _ SrcListNil (LIST _) = -- ListI-1
     return $ CoreListNil
 typingCheck _ _ SrcVecNil (VEC _ ZERO) = -- VecI-1
     return $ CoreVecNil
-typingCheck ctx r (SrcVecColonColon e es) (VEC eType (ADD1 l)) = do -- VecI-2
-    eOut <- typingCheck ctx r e eType
-    esOut <- typingCheck ctx r es (VEC eType l)
-    return $ CoreVecColonColon eOut esOut
-typingCheck ctx r (SrcEqSame mid) (EQUAL xTypeVal fromVal toVal) = do -- EqI
-    midOut <- typingCheck ctx r mid xTypeVal
+typingCheck ctx r (SrcVecColonColon h t) (VEC elementType (ADD1 lenMinus1)) = do -- VecI-2
+    hOut <- typingCheck ctx r h elementType
+    tOut <- typingCheck ctx r t (VEC elementType lenMinus1)
+    return $ CoreVecColonColon hOut tOut
+typingCheck ctx r (SrcEqSame mid) (EQUAL eqTypeVal fromVal toVal) = do -- EqI
+    midOut <- typingCheck ctx r mid eqTypeVal
     let midOutVal = valInCtx ctx midOut
-    _ <- convert ctx xTypeVal fromVal midOutVal
-    _ <- convert ctx xTypeVal toVal midOutVal
+    _ <- convert ctx eqTypeVal fromVal midOutVal
+    _ <- convert ctx eqTypeVal toVal midOutVal
     return $ CoreEqSame midOut
-typingCheck ctx r (SrcEitherLeft lt) (EITHER pType _) = do -- EitherI-1
-    ltOut <- typingCheck ctx r lt pType
-    return $ CoreEitherLeft ltOut
-typingCheck ctx r (SrcEitherRight rt) (EITHER _ sType) = do -- EitherI-2
-    rtOut <- typingCheck ctx r rt sType
-    return $ CoreEitherRight rtOut
+typingCheck ctx r (SrcEitherLeft left) (EITHER leftType _) = do -- EitherI-1
+    leftOut <- typingCheck ctx r left leftType
+    return $ CoreEitherLeft leftOut
+typingCheck ctx r (SrcEitherRight right) (EITHER _ rightType) = do -- EitherI-2
+    rightOut <- typingCheck ctx r right rightType
+    return $ CoreEitherRight rightOut
 typingCheck ctx r expr ty = do
     (The exprTypeOut exprOut) <- typingSynth ctx r expr
     _ <- sameType ctx (valInCtx ctx exprTypeOut) ty
@@ -384,10 +386,10 @@ alphaEquiv :: CoreTerm -> CoreTerm -> Bool
 alphaEquiv e1 e2 = alphaEquivImpl 0 [] [] e1 e2
 
 alphaEquivImpl :: Int -> Bindings -> Bindings -> CoreTerm -> CoreTerm -> Bool
-alphaEquivImpl lvl b1 b2 (CorePi x1 xType1 rType1) (CorePi x2 xType2 rType2) =
-    (alphaEquivImpl lvl b1 b2 xType1 xType2) && (alphaEquivImpl (lvl+1) (bind b1 x1 lvl) (bind b2 x2 lvl) rType1 rType2)
-alphaEquivImpl lvl b1 b2 (CoreSigma x1 xType1 rType1) (CoreSigma x2 xType2 rType2) =
-    (alphaEquivImpl lvl b1 b2 xType1 xType2) && (alphaEquivImpl (lvl+1) (bind b1 x1 lvl) (bind b2 x2 lvl) rType1 rType2)
+alphaEquivImpl lvl b1 b2 (CorePi argName1 argType1 returnType1) (CorePi argName2 argType2 returnType2) =
+    (alphaEquivImpl lvl b1 b2 argType1 argType2) && (alphaEquivImpl (lvl+1) (bind b1 argName1 lvl) (bind b2 argName2 lvl) returnType1 returnType2)
+alphaEquivImpl lvl b1 b2 (CoreSigma argName1 argType1 returnType1) (CoreSigma argName2 argType2 returnType2) =
+    (alphaEquivImpl lvl b1 b2 argType1 argType2) && (alphaEquivImpl (lvl+1) (bind b1 argName1 lvl) (bind b2 argName2 lvl) returnType1 returnType2)
 alphaEquivImpl lvl b1 b2 (CoreLambda x1 body1) (CoreLambda x2 body2) =
     alphaEquivImpl (lvl+1) (bind b1 x1 lvl) (bind b2 x2 lvl) body1 body2
 -- NOTE: This is the other half of the eta rule in `readBack`

@@ -74,4 +74,3 @@ data CoreTerm
 
     | CoreU
     deriving (Eq, Show)
-

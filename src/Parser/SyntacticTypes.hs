@@ -74,4 +74,3 @@ data SyntacticTerm
 
     | SrcU
     deriving (Eq, Show)
-

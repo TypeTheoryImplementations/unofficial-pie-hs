@@ -442,9 +442,9 @@ parseTopLevelBinder
 parseClaim :: Parser TopLevelDecl
 parseClaim = parseParens $ do
     _ <- parseKeyword "claim"
-    x <- parseIdentifier
-    xType <- parseSrc
-    return $ TopLevelClaim x xType
+    claimName <- parseIdentifier
+    claimPropType <- parseSrc
+    return $ TopLevelClaim claimName claimPropType
 
 parseDef :: Parser TopLevelDecl
 parseDef = parseParens $ do
@@ -456,10 +456,10 @@ parseDef = parseParens $ do
 parseCheckSame :: Parser TopLevelDecl
 parseCheckSame = parseParens $ do
     _ <- parseKeyword "check-same"
-    xType <- parseSrc
+    eqType <- parseSrc
     x1 <- parseSrc
     x2 <- parseSrc
-    return $ TopLevelCheckSame xType x1 x2
+    return $ TopLevelCheckSame eqType x1 x2
 
 
 initCtx :: Context
@@ -525,5 +525,3 @@ getClaim (_:ctxTail) x = getClaim ctxTail x
 
 bindVal :: Context -> Name -> Value -> Value -> Context
 bindVal ctx x typeVal val = ((x, Def typeVal val):ctx)
-
-
