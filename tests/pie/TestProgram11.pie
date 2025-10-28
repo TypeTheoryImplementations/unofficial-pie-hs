@@ -1,0 +1,2 @@
+(check-same (-> (-> Nat Nat) Nat Nat) (the (-> (-> Nat Nat) Nat Nat) (lambda (x y) (x y))) (the (-> (-> Nat Nat) Nat Nat) (lambda (a b) (a b))))
+

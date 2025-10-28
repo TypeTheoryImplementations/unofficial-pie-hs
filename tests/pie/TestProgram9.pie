@@ -1,0 +1,1 @@
+(check-same (Pair (-> Nat Nat) (-> Nat Nat)) (cons (the (-> Nat Nat) (lambda (x) x)) (the (-> Nat Nat) (lambda (y) y))) (cons (the (-> Nat Nat) (lambda (z) z)) (the (-> Nat Nat) (lambda (w) w))))
