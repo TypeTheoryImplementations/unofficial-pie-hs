@@ -1,2 +1,4 @@
+; This test *should* fail:
+
 (check-same Nat (the (-> (-> Nat Nat) Nat) (lambda (x y) (x y))) (the (-> (-> Nat Nat) Nat) (lambda (a b) (a b))))
 

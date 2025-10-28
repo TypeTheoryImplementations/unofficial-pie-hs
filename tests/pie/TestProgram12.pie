@@ -1,0 +1,1 @@
+(check-same (-> Trivial Trivial) (the (-> Trivial Trivial) (lambda (x) sole)) (the (-> Trivial Trivial) (lambda (y) y)))

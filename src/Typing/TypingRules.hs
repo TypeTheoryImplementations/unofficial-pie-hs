@@ -355,8 +355,8 @@ typingCheck ctx r (SrcLambda [argName] lambdaBody) (PI _ argType returnType) = d
     let newArgName = fresh ctx argName
     returnOut <- typingCheck (bindFree ctx newArgName argType) (extendRenaming r argName newArgName) lambdaBody (valOfClosure returnType (NEU argType (N_Var newArgName)))
     return $ CoreLambda newArgName returnOut
-typingCheck ctx r (SrcLambda (argName:otherArgNames) lambdaBody) typeVal = -- FunI-2
-    typingCheck ctx r (SrcLambda [argName] (SrcLambda otherArgNames lambdaBody)) typeVal
+typingCheck ctx r (SrcLambda (argName:otherArgNames) lambdaBody) (PI piArgName piArgType piReturnType) = -- FunI-2
+    typingCheck ctx r (SrcLambda [argName] (SrcLambda otherArgNames lambdaBody)) (PI piArgName piArgType piReturnType)
 typingCheck _ _ SrcListNil (LIST _) = -- ListI-1
     return $ CoreListNil
 typingCheck _ _ SrcVecNil (VEC _ ZERO) = -- VecI-1

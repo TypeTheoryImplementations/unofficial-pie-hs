@@ -1,0 +1,4 @@
+; This test *should* fail:
+
+(claim thing1 (-> (List Nat) (List Nat) (List Nat)))
+(define thing1 (lambda (x y) (x y)))

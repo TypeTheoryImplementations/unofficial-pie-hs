@@ -1,0 +1,2 @@
+(check-same (-> Absurd Absurd Absurd) (the (-> Absurd Absurd Absurd) (lambda (x y) x)) (the (-> Absurd Absurd Absurd) (lambda (x y) y)))
+

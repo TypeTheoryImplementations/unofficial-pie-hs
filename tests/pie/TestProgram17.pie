@@ -1,0 +1,7 @@
+; This test *should* fail:
+
+(claim thing1 Nat)
+(define thing1 5)
+
+(claim thing1 Nat)
+(define thing1 3)
