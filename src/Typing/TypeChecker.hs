@@ -1,13 +1,168 @@
 -- Copyright (C) 2025 Lincoln Sand
 -- SPDX-License-Identifier: AGPL-3.0-only
 
-module Typing.TypingRules where
+module Typing.TypeChecker (processFile) where
 
-import Utils.BasicTypes
-import Parser.SyntacticTypes
-import Typing.SemanticTypes
+import Data.Maybe (fromMaybe)
+import Control.Monad (foldM)
+
+import Common.Types
+import Common.Utils
+import Typing.AlphaConversion
 import Typing.Normalization
-import Typing.CoreTypes
+
+-- NOTE: Entry point into type checker
+processFile :: TopLevelDecls -> Maybe Context
+processFile decls = foldM processDecl initCtx decls
+
+processDecl :: Context -> TopLevelDecl -> Maybe Context
+processDecl ctx (TopLevelClaim name ty) = addClaim ctx name ty
+processDecl ctx (TopLevelDef name e) = addDef ctx name e
+processDecl ctx (TopLevelCheckSame ty e1 e2) = checkSame ctx ty e1 e2 >> return ctx
+processDecl ctx (TopLevelFree e) = typingSynth ctx initRename e >> return ctx
+
+addClaim :: Context -> Name -> SyntacticTerm -> Maybe Context
+addClaim ctx x ty = do
+    _ <- notUsed ctx x
+    tyOut <- isType ctx initRename ty
+    return ((x, Claim (valInCtx ctx tyOut)):ctx)
+
+addDef :: Context -> Name -> SyntacticTerm -> Maybe Context
+addDef ctx x expr = do
+    typeVal <- getClaim ctx x
+    exprOut <- typingCheck ctx initRename expr typeVal
+    return $ bindVal (removeClaim x ctx) x typeVal (valInCtx ctx exprOut)
+
+removeClaim :: Name -> Context -> Context
+removeClaim _ [] = []
+removeClaim x ((y, b):ctxTail)
+    | x == y =
+        case b of
+            Claim _ -> removeClaim x ctxTail
+            _ -> bug "There is a logic error in the implementation where `removeClaim` has been called with duplicate definitions in the context"
+    | otherwise = (y, b) : removeClaim x ctxTail
+
+checkSame :: Context -> SyntacticTerm -> SyntacticTerm -> SyntacticTerm -> Maybe ()
+checkSame ctx ty a b = do
+    tyOut <- isType ctx initRename ty
+    let tyVal = valInCtx ctx tyOut
+    aOut <- typingCheck ctx initRename a tyVal
+    bOut <- typingCheck ctx initRename b tyVal
+    let aVal = valInCtx ctx aOut
+    let bVal = valInCtx ctx bOut
+    convert ctx tyVal aVal bVal
+
+notUsed :: Context -> Name -> Maybe ()
+notUsed [] _ = Just ()
+notUsed ((y, _):ctxTail) x =
+    if x == y then Nothing else notUsed ctxTail x
+
+getClaim :: Context -> Name -> Maybe Value
+getClaim [] _ = Nothing
+getClaim ((y, Def _ _):_) x
+    | x == y = Nothing -- x is already defined
+getClaim ((y, Claim typeVal):_) x
+    | x == y = Just typeVal
+getClaim (_:ctxTail) x = getClaim ctxTail x
+
+bindVal :: Context -> Name -> Value -> Value -> Context
+bindVal ctx x typeVal val = ((x, Def typeVal val):ctx)
+
+initCtx :: Context
+initCtx = []
+
+initRename :: Renaming
+initRename = []
+
+extendRenaming :: Renaming -> Name -> Name -> Renaming
+extendRenaming r old new = (old, new) : r
+
+rename :: Renaming -> Name -> Name
+rename r x = fromMaybe x (lookup x r)
+
+freshBinder :: Context -> SyntacticTerm -> Name -> Name
+freshBinder ctx expr x = freshen ((namesOnly ctx) <> (occurringNames expr)) x
+
+occurringNames :: SyntacticTerm -> [Name]
+occurringNames (SrcThe t e) =
+    (occurringNames t) <> (occurringNames e)
+occurringNames (SrcNatAdd1 n) =
+    occurringNames n
+occurringNames (SrcWhichNat target base step) =
+    (occurringNames target) <> (occurringNames base) <> (occurringNames step)
+occurringNames (SrcIterNat target base step) =
+    (occurringNames target) <> (occurringNames base) <> (occurringNames step)
+occurringNames (SrcRecNat target base step) =
+    (occurringNames target) <> (occurringNames base) <> (occurringNames step)
+occurringNames (SrcIndNat target motive base step) =
+    (occurringNames target) <> (occurringNames motive) <> (occurringNames base) <> (occurringNames step)
+occurringNames (SrcArrow t0 ts) =
+    (occurringNames t0) <> (concatMap occurringNames ts)
+occurringNames (SrcPi bindings t) =
+    (concatMap occurringBinderNames bindings) <> (occurringNames t)
+occurringNames (SrcLambda bindings t) =
+    bindings <> (occurringNames t)
+occurringNames (SrcSigma bindings t) =
+    (concatMap occurringBinderNames bindings) <> (occurringNames t)
+occurringNames (SrcPair a d) =
+    (occurringNames a) <> (occurringNames d)
+occurringNames (SrcCons a d) =
+    (occurringNames a) <> (occurringNames d)
+occurringNames (SrcCar p) =
+    occurringNames p
+occurringNames (SrcCdr p) =
+    occurringNames p
+occurringNames (SrcListColonColon a d) =
+    (occurringNames a) <> (occurringNames d)
+occurringNames (SrcList e) =
+    occurringNames e
+occurringNames (SrcRecList target base step) =
+    (occurringNames target) <> (occurringNames base) <> (occurringNames step)
+occurringNames (SrcIndList target motive base step) =
+    (occurringNames target) <> (occurringNames motive) <> (occurringNames base) <> (occurringNames step)
+occurringNames (SrcIndAbsurd target motive) =
+    (occurringNames target) <> (occurringNames motive)
+occurringNames (SrcEq eqType from to) =
+    (occurringNames eqType) <> (occurringNames from) <> (occurringNames to)
+occurringNames (SrcEqSame e) =
+    occurringNames e
+occurringNames (SrcEqReplace target motive base) =
+    (occurringNames target) <> (occurringNames motive) <> (occurringNames base)
+occurringNames (SrcEqTrans target1 target2) =
+    (occurringNames target1) <> (occurringNames target2)
+occurringNames (SrcEqCong target func) =
+    (occurringNames target) <> (occurringNames func)
+occurringNames (SrcEqSymm target) =
+    occurringNames target
+occurringNames (SrcEqIndEq target motive base) =
+    (occurringNames target) <> (occurringNames motive) <> (occurringNames base)
+occurringNames (SrcVec e len) =
+    (occurringNames e) <> (occurringNames len)
+occurringNames (SrcVecColonColon hd tl) =
+    (occurringNames hd) <> (occurringNames tl)
+occurringNames (SrcHead target) =
+    occurringNames target
+occurringNames (SrcTail target) =
+    occurringNames target
+occurringNames (SrcIndVec len target motive base step) =
+    (occurringNames len) <> (occurringNames target) <> (occurringNames motive) <> (occurringNames base) <> (occurringNames step)
+occurringNames (SrcEither a b) =
+    (occurringNames a) <> (occurringNames b)
+occurringNames (SrcEitherLeft e) =
+    occurringNames e
+occurringNames (SrcEitherRight e) =
+    occurringNames e
+occurringNames (SrcIndEither target motive l r) =
+    (occurringNames target) <> (occurringNames motive) <> (occurringNames l) <> (occurringNames r)
+occurringNames (SrcApplication f args) =
+    (occurringNames f) <> (concatMap occurringNames args)
+occurringNames (SrcVar x) =
+    [x]
+occurringNames _ =
+    []
+
+occurringBinderNames :: (Name, SyntacticTerm) -> [Name]
+occurringBinderNames (x, t) = x : occurringNames t
 
 typingSynth :: Context -> Renaming -> SyntacticTerm -> Maybe The
 typingSynth ctx r (SrcVar varName) = do -- Hypothesis
@@ -26,6 +181,7 @@ typingSynth ctx r (SrcCdr pr) = do -- SigmaE-2
     (The prType prOut) <- typingSynth ctx r pr
     case valInCtx ctx prType of
         (SIGMA _ _ clos) ->
+            -- NOTE: The below line is effectively verbatim the body of `doCdr` in `Normalization.hs`
             return $ The (readBackType ctx (valOfClosure clos (doCar (valInCtx ctx prOut)))) (CoreCdr prOut)
         _ -> Nothing
 typingSynth ctx r (SrcApplication func [arg]) = do -- FunE-1
@@ -382,129 +538,14 @@ typingCheck ctx r expr ty = do
     _ <- sameType ctx (valInCtx ctx exprTypeOut) ty
     return $ exprOut
 
-alphaEquiv :: CoreTerm -> CoreTerm -> Bool
-alphaEquiv e1 e2 = alphaEquivImpl 0 [] [] e1 e2
-
-alphaEquivImpl :: Int -> Bindings -> Bindings -> CoreTerm -> CoreTerm -> Bool
-alphaEquivImpl lvl b1 b2 (CorePi argName1 argType1 returnType1) (CorePi argName2 argType2 returnType2) =
-    (alphaEquivImpl lvl b1 b2 argType1 argType2) && (alphaEquivImpl (lvl+1) (bind b1 argName1 lvl) (bind b2 argName2 lvl) returnType1 returnType2)
-alphaEquivImpl lvl b1 b2 (CoreSigma argName1 argType1 returnType1) (CoreSigma argName2 argType2 returnType2) =
-    (alphaEquivImpl lvl b1 b2 argType1 argType2) && (alphaEquivImpl (lvl+1) (bind b1 argName1 lvl) (bind b2 argName2 lvl) returnType1 returnType2)
-alphaEquivImpl lvl b1 b2 (CoreLambda x1 body1) (CoreLambda x2 body2) =
-    alphaEquivImpl (lvl+1) (bind b1 x1 lvl) (bind b2 x2 lvl) body1 body2
--- NOTE: This is the other half of the eta rule in `readBack`
-alphaEquivImpl _ _ _ (CoreThe (The CoreAbsurd _)) (CoreThe (The CoreAbsurd _)) = True
-alphaEquivImpl _ b1 b2 (CoreVar x) (CoreVar y) =
-    let xBinding = lookupBinding b1 x
-        yBinding = lookupBinding b2 y
-    in case (xBinding, yBinding) of
-        (Just lvlX, Just lvlY) -> lvlX == lvlY
-        (Nothing, Nothing) -> x == y
-        (_, _) -> False
-alphaEquivImpl lvl b1 b2 (CoreThe (The t1 e1)) (CoreThe (The t2 e2)) =
-    (alphaEquivImpl lvl b1 b2 t1 t2) && (alphaEquivImpl lvl b1 b2 e1 e2)
-alphaEquivImpl _ _ _ CoreAtom CoreAtom = True
-alphaEquivImpl _ _ _ (CoreAtomLiteral a1) (CoreAtomLiteral a2) = a1 == a2
-alphaEquivImpl lvl b1 b2 (CoreCons car1 cdr1) (CoreCons car2 cdr2) =
-    (alphaEquivImpl lvl b1 b2 car1 car2) && (alphaEquivImpl lvl b1 b2 cdr1 cdr2)
-alphaEquivImpl lvl b1 b2 (CoreCar p1) (CoreCar p2) =
-    alphaEquivImpl lvl b1 b2 p1 p2
-alphaEquivImpl lvl b1 b2 (CoreCdr p1) (CoreCdr p2) =
-    alphaEquivImpl lvl b1 b2 p1 p2
-alphaEquivImpl lvl b1 b2 (CoreApplication f arg1) (CoreApplication g arg2) =
-    (alphaEquivImpl lvl b1 b2 f g) && (alphaEquivImpl lvl b1 b2 arg1 arg2)
-alphaEquivImpl _ _ _ CoreNat CoreNat = True
-alphaEquivImpl _ _ _ CoreNatZero CoreNatZero = True
-alphaEquivImpl lvl b1 b2 (CoreNatAdd1 n1) (CoreNatAdd1 n2) =
-    alphaEquivImpl lvl b1 b2 n1 n2
-alphaEquivImpl lvl b1 b2 (CoreWhichNat target1 (The baseType1 baseExpr1) step1) (CoreWhichNat target2 (The baseType2 baseExpr2) step2) =
-    (alphaEquivImpl lvl b1 b2 target1 target2) && (alphaEquivImpl lvl b1 b2 baseType1 baseType2)
-    && (alphaEquivImpl lvl b1 b2 baseExpr1 baseExpr2) && (alphaEquivImpl lvl b1 b2 step1 step2)
-alphaEquivImpl lvl b1 b2 (CoreIterNat target1 (The baseType1 baseExpr1) step1) (CoreIterNat target2 (The baseType2 baseExpr2) step2) =
-    (alphaEquivImpl lvl b1 b2 target1 target2) && (alphaEquivImpl lvl b1 b2 baseType1 baseType2)
-    && (alphaEquivImpl lvl b1 b2 baseExpr1 baseExpr2) && (alphaEquivImpl lvl b1 b2 step1 step2)
-alphaEquivImpl lvl b1 b2 (CoreRecNat target1 (The baseType1 baseExpr1) step1) (CoreRecNat target2 (The baseType2 baseExpr2) step2) =
-    (alphaEquivImpl lvl b1 b2 target1 target2) && (alphaEquivImpl lvl b1 b2 baseType1 baseType2)
-    && (alphaEquivImpl lvl b1 b2 baseExpr1 baseExpr2) && (alphaEquivImpl lvl b1 b2 step1 step2)
-alphaEquivImpl lvl b1 b2 (CoreIndNat target1 motive1 base1 step1) (CoreIndNat target2 motive2 base2 step2) =
-    (alphaEquivImpl lvl b1 b2 target1 target2) && (alphaEquivImpl lvl b1 b2 motive1 motive2)
-    && (alphaEquivImpl lvl b1 b2 base1 base2) && (alphaEquivImpl lvl b1 b2 step1 step2)
-alphaEquivImpl lvl b1 b2 (CoreList elementType1) (CoreList elementType2) =
-    alphaEquivImpl lvl b1 b2 elementType1 elementType2
-alphaEquivImpl _ _ _ CoreListNil CoreListNil = True
-alphaEquivImpl lvl b1 b2 (CoreListColonColon h1 t1) (CoreListColonColon h2 t2) =
-    (alphaEquivImpl lvl b1 b2 h1 h2) && (alphaEquivImpl lvl b1 b2 t1 t2)
-alphaEquivImpl lvl b1 b2 (CoreRecList target1 (The baseType1 baseExpr1) step1) (CoreRecList target2 (The baseType2 baseExpr2) step2) =
-    (alphaEquivImpl lvl b1 b2 target1 target2) && (alphaEquivImpl lvl b1 b2 baseType1 baseType2)
-    && (alphaEquivImpl lvl b1 b2 baseExpr1 baseExpr2) && (alphaEquivImpl lvl b1 b2 step1 step2)
-alphaEquivImpl lvl b1 b2 (CoreIndList target1 motive1 base1 step1) (CoreIndList target2 motive2 base2 step2) =
-    (alphaEquivImpl lvl b1 b2 target1 target2) && (alphaEquivImpl lvl b1 b2 motive1 motive2)
-    && (alphaEquivImpl lvl b1 b2 base1 base2) && (alphaEquivImpl lvl b1 b2 step1 step2)
-alphaEquivImpl lvl b1 b2 (CoreVec elementType1 len1) (CoreVec elementType2 len2) =
-    (alphaEquivImpl lvl b1 b2 elementType1 elementType2) && (alphaEquivImpl lvl b1 b2 len1 len2)
-alphaEquivImpl _ _ _ CoreVecNil CoreVecNil = True
-alphaEquivImpl lvl b1 b2 (CoreVecColonColon h1 t1) (CoreVecColonColon h2 t2) =
-    (alphaEquivImpl lvl b1 b2 h1 h2) && (alphaEquivImpl lvl b1 b2 t1 t2)
-alphaEquivImpl lvl b1 b2 (CoreHead vec1) (CoreHead vec2) =
-    alphaEquivImpl lvl b1 b2 vec1 vec2
-alphaEquivImpl lvl b1 b2 (CoreTail vec1) (CoreTail vec2) =
-    alphaEquivImpl lvl b1 b2 vec1 vec2
-alphaEquivImpl lvl b1 b2 (CoreIndVec n1 target1 motive1 base1 step1) (CoreIndVec n2 target2 motive2 base2 step2) =
-    (alphaEquivImpl lvl b1 b2 n1 n2) && (alphaEquivImpl lvl b1 b2 target1 target2)
-    && (alphaEquivImpl lvl b1 b2 motive1 motive2) && (alphaEquivImpl lvl b1 b2 base1 base2)
-    && (alphaEquivImpl lvl b1 b2 step1 step2)
-alphaEquivImpl lvl b1 b2 (CoreEq eqType1 from1 to1) (CoreEq eqType2 from2 to2) =
-    (alphaEquivImpl lvl b1 b2 eqType1 eqType2) && (alphaEquivImpl lvl b1 b2 from1 from2)
-    && (alphaEquivImpl lvl b1 b2 to1 to2)
-alphaEquivImpl lvl b1 b2 (CoreEqSame expr1) (CoreEqSame expr2) =
-    alphaEquivImpl lvl b1 b2 expr1 expr2
-alphaEquivImpl lvl b1 b2 (CoreSymm expr1) (CoreSymm expr2) =
-    alphaEquivImpl lvl b1 b2 expr1 expr2
-alphaEquivImpl lvl b1 b2 (CoreCong target1 coDomainType1 func1) (CoreCong target2 coDomainType2 func2) =
-    (alphaEquivImpl lvl b1 b2 target1 target2) && (alphaEquivImpl lvl b1 b2 coDomainType1 coDomainType2)
-    && (alphaEquivImpl lvl b1 b2 func1 func2)
-alphaEquivImpl lvl b1 b2 (CoreReplace target1 motive1 base1) (CoreReplace target2 motive2 base2) =
-    (alphaEquivImpl lvl b1 b2 target1 target2) && (alphaEquivImpl lvl b1 b2 motive1 motive2)
-    && (alphaEquivImpl lvl b1 b2 base1 base2)
-alphaEquivImpl lvl b1 b2 (CoreTrans fromMid1 midTo1) (CoreTrans fromMid2 midTo2) =
-    (alphaEquivImpl lvl b1 b2 fromMid1 fromMid2) && (alphaEquivImpl lvl b1 b2 midTo1 midTo2)
-alphaEquivImpl lvl b1 b2 (CoreIndEq target1 motive1 base1) (CoreIndEq target2 motive2 base2) =
-    (alphaEquivImpl lvl b1 b2 target1 target2) && (alphaEquivImpl lvl b1 b2 motive1 motive2)
-    && (alphaEquivImpl lvl b1 b2 base1 base2)
-alphaEquivImpl lvl b1 b2 (CoreEither leftType1 rightType1) (CoreEither leftType2 rightType2) =
-    (alphaEquivImpl lvl b1 b2 leftType1 leftType2) && (alphaEquivImpl lvl b1 b2 rightType1 rightType2)
-alphaEquivImpl lvl b1 b2 (CoreEitherLeft left1) (CoreEitherLeft left2) =
-    alphaEquivImpl lvl b1 b2 left1 left2
-alphaEquivImpl lvl b1 b2 (CoreEitherRight right1) (CoreEitherRight right2) =
-    alphaEquivImpl lvl b1 b2 right1 right2
-alphaEquivImpl lvl b1 b2 (CoreIndEither target1 base1 leftStep1 rightStep1) (CoreIndEither target2 base2 leftStep2 rightStep2) =
-    (alphaEquivImpl lvl b1 b2 target1 target2) && (alphaEquivImpl lvl b1 b2 base1 base2)
-    && (alphaEquivImpl lvl b1 b2 leftStep1 leftStep2) && (alphaEquivImpl lvl b1 b2 rightStep1 rightStep2)
-alphaEquivImpl _ _ _ CoreTrivial CoreTrivial = True
-alphaEquivImpl _ _ _ CoreTrivialSole CoreTrivialSole = True
-alphaEquivImpl _ _ _ CoreAbsurd CoreAbsurd = True
-alphaEquivImpl lvl b1 b2 (CoreIndAbsurd target1 motive1) (CoreIndAbsurd target2 motive2) =
-    (alphaEquivImpl lvl b1 b2 target1 target2) && (alphaEquivImpl lvl b1 b2 motive1 motive2)
-alphaEquivImpl _ _ _ CoreU CoreU = True
-alphaEquivImpl _ _ _ _ _ = False -- mismatched `CoreTerm` constructors
-
-lookupBinding :: Bindings -> Name -> Maybe Int
-lookupBinding [] _ = Nothing
-lookupBinding (h:t) x
-    | fst h == x    = Just $ snd h
-    | otherwise     = lookupBinding t x
-
-bind :: Bindings -> Name -> Int -> Bindings
-bind b x lvl = ((x, lvl):b)
-
-convert :: Context -> Value -> Value -> Value -> Maybe ConvertSuccess
+convert :: Context -> Value -> Value -> Value -> Maybe ()
 convert ctx typeVal aVal bVal =
     let a = readBack ctx typeVal aVal
         b = readBack ctx typeVal bVal
-    in if alphaEquiv a b then Just ConvertSuccess else Nothing
+    in if alphaEquiv a b then Just () else Nothing
 
-sameType :: Context -> Value -> Value -> Maybe ConvertSuccess
+sameType :: Context -> Value -> Value -> Maybe ()
 sameType ctx given expected =
     let givenE = readBackType ctx given
         expectedE = readBackType ctx expected
-    in if alphaEquiv givenE expectedE then Just ConvertSuccess else Nothing
+    in if alphaEquiv givenE expectedE then Just () else Nothing

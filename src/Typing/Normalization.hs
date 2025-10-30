@@ -1,17 +1,16 @@
 -- Copyright (C) 2025 Lincoln Sand
 -- SPDX-License-Identifier: AGPL-3.0-only
 
-module Typing.Normalization where
+module Typing.Normalization (valOfClosure, doAp, doCar, indVecStepType, valInCtx, ctxToEnv, readBackType, readBack) where
 
-import Typing.SemanticTypes
-import Utils.BasicTypes
-import Typing.CoreTypes
+import Common.Types
+import Common.Utils
 
 -- NOTE: We make use of Haskell's built-in laziness. So we call the function directly and get the Value, but Haskell will automagically memoize it
 --  This allows use to get rid of all the box and DELAY boilerplate/logic that is present in the reference implementation which is written in Racket
 
 extendEnv :: Env -> Name -> Value -> Env
-extendEnv env x v = ((x, v):env)
+extendEnv env x v = (x, v) : env
 
 valOfClosure :: Closure -> Value -> Value
 valOfClosure closure val =
@@ -25,7 +24,7 @@ doAp ratorVal randVal =
         LAM _ body -> valOfClosure body randVal
         NEU (PI _ argType body) ne ->
             NEU (valOfClosure body randVal) (N_Ap ne (THE argType randVal))
-        _ -> error "There is a logic error in the implementation where `doAp` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doAp` has been called on an invalid target"
 
 doWhichNat :: Value -> Value -> Value -> Value -> Value
 doWhichNat targetVal baseTypeVal baseVal stepVal =
@@ -41,7 +40,7 @@ doWhichNat targetVal baseTypeVal baseVal stepVal =
                     (THE baseTypeVal baseVal)
                     (THE (PI "n" NAT (HO_CLOS (\_ -> baseTypeVal)))
                         stepVal))
-        _ -> error "There is a logic error in the implementation where `doWhichNat` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doWhichNat` has been called on an invalid target"
 doIterNat :: Value -> Value -> Value -> Value -> Value
 doIterNat targetVal baseTypeVal baseVal stepVal =
     case targetVal of
@@ -57,7 +56,7 @@ doIterNat targetVal baseTypeVal baseVal stepVal =
                     (THE (PI "n" baseTypeVal (HO_CLOS (\_ -> baseTypeVal)))
                         stepVal)
                 )
-        _ -> error "There is a logic error in the implementation where `doIterNat` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doIterNat` has been called on an invalid target"
 doRecNat :: Value -> Value -> Value -> Value -> Value
 doRecNat targetVal baseTypeVal baseVal stepVal =
     case targetVal of
@@ -72,7 +71,7 @@ doRecNat targetVal baseTypeVal baseVal stepVal =
                     (THE (PI "nMinus1" NAT (HO_CLOS (\_ ->
                             PI "ih" baseTypeVal (HO_CLOS (\_ -> baseTypeVal)))))
                         stepVal))
-        _ -> error "There is a logic error in the implementation where `doRecNat` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doRecNat` has been called on an invalid target"
 doIndNat :: Value -> Value -> Value -> Value -> Value
 doIndNat targetVal motiveVal baseVal stepVal =
     case targetVal of
@@ -90,14 +89,14 @@ doIndNat targetVal motiveVal baseVal stepVal =
                             PI "ih" (doAp motiveVal nMinus1) (HO_CLOS (\_ ->
                                 (doAp motiveVal (ADD1 nMinus1)))))))
                         stepVal))
-        _ -> error "There is a logic error in the implementation where `doIndNat` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doIndNat` has been called on an invalid target"
 
 doCar :: Value -> Value
 doCar pVal =
     case pVal of
         (CONS a _) -> a
         (NEU (SIGMA _ argType _) ne) -> NEU argType (N_Car ne)
-        _ -> error "There is a logic error in the implementation where `doCar` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doCar` has been called on an invalid target"
 doCdr :: Value -> Value
 doCdr pVal =
     case pVal of
@@ -106,7 +105,7 @@ doCdr pVal =
             NEU 
                 (valOfClosure cdrType (doCar pVal))
                 (N_Cdr ne)
-        _ -> error "There is a logic error in the implementation where `doCdr` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doCdr` has been called on an invalid target"
 
 doRecList :: Value -> Value -> Value -> Value -> Value
 doRecList targetVal baseTypeVal baseVal stepVal =
@@ -124,7 +123,7 @@ doRecList targetVal baseTypeVal baseVal stepVal =
                             PI "ih" baseTypeVal (HO_CLOS (\_ ->
                                 baseTypeVal)))))))
                         stepVal))
-        _ -> error "There is a logic error in the implementation where `doRecList` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doRecList` has been called on an invalid target"
 doIndList :: Value -> Value -> Value -> Value -> Value
 doIndList targetVal motiveVal baseVal stepVal =
     case targetVal of
@@ -146,7 +145,7 @@ doIndList targetVal motiveVal baseVal stepVal =
                                     (doAp motiveVal (LIST_COLON_COLON h t))
                                 )))))))
                             stepVal))
-        _ -> error "There is a logic error in the implementation where `doIndList` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doIndList` has been called on an invalid target"
 
 doIndAbsurd :: Value -> Value -> Value
 doIndAbsurd targetVal motiveVal =
@@ -154,7 +153,7 @@ doIndAbsurd targetVal motiveVal =
         (NEU ABSURD ne) ->
             NEU motiveVal
                 (N_Ind_Absurd ne (THE UNIVERSE motiveVal))
-        _ -> error "There is a logic error in the implementation where `doIndAbsurd` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doIndAbsurd` has been called on an invalid target"
 
 doReplace :: Value -> Value -> Value -> Value
 doReplace targetVal motiveVal baseVal =
@@ -165,7 +164,7 @@ doReplace targetVal motiveVal baseVal =
                 (N_Replace ne
                     (THE (PI "x" eqTypeVal (HO_CLOS (\_ -> UNIVERSE))) motiveVal)
                     (THE (doAp motiveVal fromVal) baseVal))
-        _ -> error "There is a logic error in the implementation where `doReplace` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doReplace` has been called on an invalid target"
 doTrans :: Value -> Value -> Value
 doTrans target1Val target2Val =
     case (target1Val, target2Val) of
@@ -186,7 +185,7 @@ doTrans target1Val target2Val =
             NEU
                 (EQUAL eqTypeVal fromVal toVal)
                 (N_Trans12 ne1 ne2)
-        _ -> error "There is a logic error in the implementation where `doTrans` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doTrans` has been called on an invalid target"
 doCong :: Value -> Value -> Value -> Value
 doCong targetVal coDomainTypeVal funcVal =
     case targetVal of
@@ -195,14 +194,14 @@ doCong targetVal coDomainTypeVal funcVal =
             NEU
                 (EQUAL coDomainTypeVal (doAp funcVal fromVal) (doAp funcVal toVal))
                 (N_Cong ne (THE (PI "x" domainTypeVal (HO_CLOS (\_ -> coDomainTypeVal))) funcVal))
-        _ -> error "There is a logic error in the implementation where `doCong` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doCong` has been called on an invalid target"
 doSymm :: Value -> Value
 doSymm targetVal =
     case targetVal of
         (SAME val) -> (SAME val)
         (NEU (EQUAL eqTypeVal fromVal toVal) ne) ->
             (NEU (EQUAL eqTypeVal toVal fromVal) (N_Symm ne))
-        _ -> error "There is a logic error in the implementation where `doSymm` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doSymm` has been called on an invalid target"
 doIndEq :: Value -> Value -> Value -> Value
 doIndEq targetVal motiveVal baseVal =
     case targetVal of
@@ -220,7 +219,7 @@ doIndEq targetVal motiveVal baseVal =
                         (doAp (doAp motiveVal fromVal)
                             (SAME fromVal))
                         baseVal))
-        _ -> error "There is a logic error in the implementation where `doIndEq` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doIndEq` has been called on an invalid target"
 
 doHead :: Value -> Value
 doHead targetVal =
@@ -228,14 +227,14 @@ doHead targetVal =
         (VEC_COLON_COLON hVal _) -> hVal
         (NEU (VEC elementTypeVal (ADD1 _)) ne) ->
             NEU elementTypeVal (N_Head ne)
-        _ -> error "There is a logic error in the implementation where `doHead` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doHead` has been called on an invalid target"
 doTail :: Value -> Value
 doTail targetVal =
     case targetVal of
         (VEC_COLON_COLON _ tailVal) -> tailVal
         (NEU (VEC elementTypeVal (ADD1 lenMinus1Val)) ne) ->
             NEU (VEC elementTypeVal lenMinus1Val) (N_Tail ne)
-        _ -> error "There is a logic error in the implementation where `doTail` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doTail` has been called on an invalid target"
 
 indVecStepType :: Value -> Value -> Value
 indVecStepType elementTypeVal motiveVal =
@@ -275,7 +274,7 @@ doIndVec lenVal vecVal motiveVal baseVal stepVal =
                         motiveVal)
                     (THE (doAp (doAp motiveVal ZERO) VECNIL) baseVal)
                     (THE (indVecStepType elementTypeVal motiveVal) stepVal))
-        _ -> error "There is a logic error in the implementation where `doIndVec` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doIndVec` has been called on an invalid target"
 
 doIndEither :: Value -> Value -> Value -> Value -> Value
 doIndEither target motive l r =
@@ -297,10 +296,10 @@ doIndEither target motive l r =
                             (PI "x" rightTypeVal (HO_CLOS (\x ->
                                 doAp motive (RIGHT x))))
                             r))
-        _ -> error "There is a logic error in the implementation where `doIndEither` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doIndEither` has been called on an invalid target"
 
 varVal :: Env -> Name -> Value
-varVal [] x = error $ "Variable " ++ x ++ " not in the Env!"
+varVal [] x = bug $ "Variable " <> x <> " not in the Env!"
 varVal (ctxHead : ctxTail) x
     | fst ctxHead == x  = snd ctxHead
     | otherwise         = varVal ctxTail x
@@ -388,17 +387,14 @@ reflect env (CoreApplication rator rand) =
 reflect env (CoreVar x) =
     varVal env x
 
-extendRenaming :: Renaming -> Name -> Name -> Renaming
-extendRenaming r from to = ((from, to):r)
-
 valInCtx :: Context -> CoreTerm -> Value
 valInCtx ctx expr = reflect (ctxToEnv ctx) expr
 
 ctxToEnv :: Context -> Env
 ctxToEnv ((x, Def _ val):ctxTail) =
-    [(x, val)] ++ (ctxToEnv ctxTail)
+    [(x, val)] <> (ctxToEnv ctxTail)
 ctxToEnv ((x, Free typeVal):ctxTail) =
-    [(x, NEU typeVal (N_Var x))] ++ (ctxToEnv ctxTail)
+    [(x, NEU typeVal (N_Var x))] <> (ctxToEnv ctxTail)
 ctxToEnv ((_, Claim _):ctxTail) =
     ctxToEnv ctxTail
 ctxToEnv [] = []

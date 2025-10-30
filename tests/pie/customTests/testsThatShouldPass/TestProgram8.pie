@@ -1,2 +1,5 @@
+; Copyright (C) 2025 Lincoln Sand
+; SPDX-License-Identifier: 0BSD
+
 (claim n-equals-n-implies-succ (Pi ((n Nat))
     (-> (= Nat n n) (= Nat (add1 n) (add1 n)))))

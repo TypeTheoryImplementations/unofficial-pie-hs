@@ -1,7 +1,7 @@
 cabal-version:      3.4
 
 name:               unofficial-pie-hs
-version:            1.0.1.0
+version:            1.1.0.0
 synopsis:           An unofficial implementation of Pie in Haskell
 description:        This is an easy to understand unofficial reimplementation of the Pie language from The Little Typer written in Haskell.
 category:           Text
@@ -39,6 +39,8 @@ source-repository head
 
 common common-opts
     default-language: GHC2024
+    default-extensions:
+        OverloadedStrings
     ghc-options:
         -Wall
         -Wcompat
@@ -52,18 +54,18 @@ library
     hs-source-dirs:   src
 
     exposed-modules:
-        InterfaceIO.Interface
-        Parser.Parser
+        Interface
     other-modules:
-        Parser.SyntacticTypes
-        Typing.CoreTypes
+        Common.Types
+        Common.Utils
+        Parser.Parser
+        Typing.AlphaConversion
         Typing.Normalization
-        Typing.SemanticTypes
-        Typing.TypingRules
-        Utils.BasicTypes
+        Typing.TypeChecker
 
     build-depends:
         base ^>=4.20.0.0,
+        text >= 1.2,
         megaparsec >= 9.0,
         parser-combinators >= 1.0,
         containers >= 0.7,
@@ -76,12 +78,13 @@ executable unofficial-pie-hs
 
     build-depends:
         base ^>=4.20.0.0,
+        text >= 1.2,
         unofficial-pie-hs
 
 test-suite unofficial-pie-hs-test
     import:           common-opts
     type:             exitcode-stdio-1.0
-    hs-source-dirs:   test
+    hs-source-dirs:   tests/haskell
     main-is:          Spec.hs
 
     build-tool-depends:
@@ -89,6 +92,7 @@ test-suite unofficial-pie-hs-test
 
     build-depends:
         base ^>=4.20.0.0,
+        text >= 1.2,
         megaparsec >= 9.0,
         hspec,
         unofficial-pie-hs

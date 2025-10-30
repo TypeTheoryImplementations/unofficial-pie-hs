@@ -1,3 +1,6 @@
+; Copyright (C) 2025 Lincoln Sand
+; SPDX-License-Identifier: 0BSD
+
 (claim refl-add1-zero (= Nat (add1 zero) (add1 zero)))
 (define refl-add1-zero (same (add1 zero)))
 

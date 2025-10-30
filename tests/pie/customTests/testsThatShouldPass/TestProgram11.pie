@@ -1,0 +1,4 @@
+; Copyright (C) 2025 Lincoln Sand
+; SPDX-License-Identifier: 0BSD
+
+(check-same (-> (-> Nat Nat) Nat Nat) (the (-> (-> Nat Nat) Nat Nat) (lambda (x y) (x y))) (the (-> (-> Nat Nat) Nat Nat) (lambda (a b) (a b))))

@@ -1,5 +1,7 @@
+; Copyright (C) 2025 Lincoln Sand
+; SPDX-License-Identifier: 0BSD
+
 ; This test *should* fail:
 
 (claim thing1 U)
 (define thing1 (lambda (x) x))
-

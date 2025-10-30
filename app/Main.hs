@@ -3,8 +3,9 @@
 
 module Main where
 
-import InterfaceIO.Interface
 import System.Environment (getArgs)
+
+import Interface
 
 main :: IO ()
 main = do

@@ -1,3 +1,6 @@
+; Copyright (C) 2025 Lincoln Sand
+; SPDX-License-Identifier: 0BSD
+
 (claim cong-add1-refl (= Nat (add1 zero) (add1 zero)))
 (define cong-add1-refl
   (cong (the (= Nat zero zero) (same zero)) (the (Pi ((n Nat)) Nat) (lambda (n) (add1 n)))))

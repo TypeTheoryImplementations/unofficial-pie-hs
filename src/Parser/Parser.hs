@@ -1,26 +1,19 @@
 -- Copyright (C) 2025 Lincoln Sand
 -- SPDX-License-Identifier: AGPL-3.0-only
 
-module Parser.Parser(parseTopLevel, processFile, SyntacticTerm(..), Name, The(..), TopLevelDecls) where
+module Parser.Parser (parseTopLevel) where
 
-import Parser.SyntacticTypes
-import Typing.CoreTypes
-import Utils.BasicTypes
-import Typing.SemanticTypes
-import Typing.Normalization
-import Typing.TypingRules
+import qualified Data.Void as Void
+import qualified Data.Text as T
+import Data.Char (isAlphaNum, isAlpha)
 
-import Text.Megaparsec
+import Text.Megaparsec (Parsec, notFollowedBy, takeWhileP, takeWhile1P, (<|>), try, many, some, empty, eof, between)
 import qualified Text.Megaparsec.Char as ParsecChar
 import qualified Text.Megaparsec.Char.Lexer as CharLexer
 
-import qualified Data.Void as Void
-import Control.Monad
+import Common.Types
 
-
-type Parser = Parsec Void.Void String
-
-type TopLevelDecls = [TopLevelDecl]
+type Parser = Parsec Void.Void T.Text
 
 spaceConsumer :: Parser ()
 spaceConsumer = CharLexer.space ParsecChar.space1 (CharLexer.skipLineComment ";") empty
@@ -44,27 +37,32 @@ parseLexeme = CharLexer.lexeme spaceConsumer
 identifierChar :: Parser Char
 identifierChar = ParsecChar.alphaNumChar <|> ParsecChar.char '-'
 
-parseKeyword :: String -> Parser String
+isIdentTail :: Char -> Bool
+isIdentTail c = isAlphaNum c || c == '-'
+
+parseKeyword :: T.Text -> Parser T.Text
 parseKeyword word = parseLexeme (ParsecChar.string word <* notFollowedBy identifierChar)
 
-parseSymbol :: String -> Parser String
+parseSymbol :: T.Text -> Parser T.Text
 parseSymbol = CharLexer.symbol spaceConsumer
 
 parseParens :: Parser a -> Parser a
 parseParens = between (parseSymbol "(") (parseSymbol ")")
 
-parseIdentifier :: Parser String
-parseIdentifier = do
-    ident <- parseLexeme $ (:) <$> ParsecChar.letterChar <*> many identifierChar
+parseIdentifier :: Parser T.Text
+parseIdentifier = parseLexeme $ do
+    first <- ParsecChar.letterChar
+    rest <- takeWhileP (Just "identifier tail") isIdentTail
+    let ident = T.cons first rest
     if ident `elem` reservedKeywords
-        then fail $ "keyword " ++ (show ident) ++ " cannot be used as an identifier"
+        then fail $ "keyword " <> T.unpack ident <> " cannot be used as an identifier"
         else return ident
 
 parseNumber :: Parser Integer
 parseNumber = parseLexeme CharLexer.decimal
 
-parseAtomChar :: Parser Char
-parseAtomChar = ParsecChar.letterChar
+isAtomLiteral :: Char -> Bool
+isAtomLiteral = isAlpha
 
 parseSrc :: Parser SyntacticTerm
 parseSrc
@@ -120,7 +118,6 @@ parseSrc
 --  It would still work if put earlier (order of the parsers doesn't matter here), but the excessive backtracing would have performance costs.
         <|>     parseSrcApplication
 
-
 parseSingleParam :: Parser (Name, SyntacticTerm)
 parseSingleParam = parseParens $ do
     paramName <- parseIdentifier
@@ -143,7 +140,7 @@ parseSrcAtom = SrcAtom <$ parseKeyword "Atom"
 parseSrcAtomLiteral :: Parser SyntacticTerm
 parseSrcAtomLiteral = parseLexeme $ do -- `parseLexeme` consumes the trailing whitespace after we've parsed the full atom literal
     _ <- ParsecChar.char '\''
-    sym <- some parseAtomChar -- we do not use `parseLexeme` here or on the prior line since whitespace inside of atom literals is forbidden
+    sym <- takeWhile1P (Just "atom literal string") isAtomLiteral
     return $ SrcAtomLiteral sym
 
 parseSrcPair :: Parser SyntacticTerm
@@ -424,14 +421,6 @@ parseSrcIndAbsurd = parseParens $ do
 parseSrcU :: Parser SyntacticTerm
 parseSrcU = SrcU <$ parseKeyword "U"
 
-
-data TopLevelDecl
-    = TopLevelClaim Name SyntacticTerm
-    | TopLevelDef Name SyntacticTerm
-    | TopLevelCheckSame SyntacticTerm SyntacticTerm SyntacticTerm
-    | TopLevelFree SyntacticTerm
-    deriving (Eq, Show)
-
 parseTopLevelBinder :: Parser TopLevelDecl
 parseTopLevelBinder
     =   try parseClaim
@@ -460,68 +449,3 @@ parseCheckSame = parseParens $ do
     x1 <- parseSrc
     x2 <- parseSrc
     return $ TopLevelCheckSame eqType x1 x2
-
-
-initCtx :: Context
-initCtx = []
-
-initRename :: Renaming
-initRename = []
-
--- NOTE: Entry point into type checker
-processFile :: TopLevelDecls -> Maybe Context
-processFile decls = foldM processDecl initCtx decls
-
-processDecl :: Context -> TopLevelDecl -> Maybe Context
-processDecl ctx (TopLevelClaim name ty) = addClaim ctx name ty
-processDecl ctx (TopLevelDef name e) = addDef ctx name e
-processDecl ctx (TopLevelCheckSame ty e1 e2) = checkSame ctx ty e1 e2 >> return ctx
-processDecl ctx (TopLevelFree e) = typingSynth ctx initRename e >> return ctx
-
-
-addClaim :: Context -> Name -> SyntacticTerm -> Maybe Context
-addClaim ctx x ty = do
-    _ <- notUsed ctx x
-    tyOut <- isType ctx initRename ty
-    return ((x, Claim (valInCtx ctx tyOut)):ctx)
-
-addDef :: Context -> Name -> SyntacticTerm -> Maybe Context
-addDef ctx x expr = do
-    typeVal <- getClaim ctx x
-    exprOut <- typingCheck ctx initRename expr typeVal
-    return $ bindVal (removeClaim x ctx) x typeVal (valInCtx ctx exprOut)
-
-removeClaim :: Name -> Context -> Context
-removeClaim _ [] = []
-removeClaim x ((y, b):ctxTail)
-    | x == y =
-        case b of
-            Claim _ -> removeClaim x ctxTail
-            _ -> error "There is a logic error in the implementation where `removeClaim` has been called with duplicate definitions in the context"
-    | otherwise = (y, b) : removeClaim x ctxTail
-
-checkSame :: Context -> SyntacticTerm -> SyntacticTerm -> SyntacticTerm -> Maybe ConvertSuccess
-checkSame ctx ty a b = do
-    tyOut <- isType ctx initRename ty
-    let tyVal = valInCtx ctx tyOut
-    aOut <- typingCheck ctx initRename a tyVal
-    bOut <- typingCheck ctx initRename b tyVal
-    let aVal = valInCtx ctx aOut
-    let bVal = valInCtx ctx bOut
-    convert ctx tyVal aVal bVal
-
-notUsed :: Context -> Name -> Maybe ConvertSuccess
-notUsed [] _ = Just ConvertSuccess
-notUsed ((y, _):ctxTail) x =
-    if x == y then Nothing else notUsed ctxTail x
-
-getClaim :: Context -> Name -> Maybe Value
-getClaim [] _ = Nothing
-getClaim ((y, Def _ _):_) x
-    | x == y = Nothing -- x is already defined
-getClaim ((y, Claim typeVal):_) x
-    | x == y = Just typeVal
-getClaim (_:ctxTail) x = getClaim ctxTail x
-
-bindVal :: Context -> Name -> Value -> Value -> Context
-bindVal ctx x typeVal val = ((x, Def typeVal val):ctx)

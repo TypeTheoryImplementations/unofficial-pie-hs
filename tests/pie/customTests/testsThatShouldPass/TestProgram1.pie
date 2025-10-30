@@ -1,3 +1,6 @@
+; Copyright (C) 2025 Lincoln Sand
+; SPDX-License-Identifier: 0BSD
+
 (claim id-Nat (Pi ((x Nat)) Nat))
 (define id-Nat (lambda (x) x))
 

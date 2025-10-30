@@ -1,0 +1,4 @@
+; Copyright (C) 2025 Lincoln Sand
+; SPDX-License-Identifier: 0BSD
+
+(check-same (-> Absurd Absurd Absurd) (the (-> Absurd Absurd Absurd) (lambda (x y) x)) (the (-> Absurd Absurd Absurd) (lambda (x y) y)))

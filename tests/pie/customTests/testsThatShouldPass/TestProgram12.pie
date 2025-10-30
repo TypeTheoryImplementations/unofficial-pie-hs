@@ -1,1 +1,4 @@
+; Copyright (C) 2025 Lincoln Sand
+; SPDX-License-Identifier: 0BSD
+
 (check-same (-> Trivial Trivial) (the (-> Trivial Trivial) (lambda (x) sole)) (the (-> Trivial Trivial) (lambda (y) y)))
