@@ -1,11 +1,13 @@
 -- Copyright (C) 2025 Lincoln Sand
 -- SPDX-License-Identifier: AGPL-3.0-only
 
-module Common.Types (Name, Renaming, Binder(..), Context, Env, Closure(..), Value(..), Neutral(..), Norm(..), The(..), CoreTerm(..), TopLevelDecls, TopLevelDecl(..), SyntacticTerm(..)) where
+module Common.Types (Name, Error, Renaming, Binder(..), Context, Env, Closure(..), Value(..), Neutral(..), Norm(..), The(..), CoreTerm(..), TopLevelDecls, TopLevelDecl(..), SyntacticTerm(..)) where
 
 import qualified Data.Text as T
 
 type Name = T.Text -- [a-zA-Z] or [0-9] or '-' (first character must be a letter); kebab-case allowed
+
+type Error = String
 
 type Renaming = [(Name, Name)]
 

@@ -1,4 +1,4 @@
 ; Copyright (C) 2025 Lincoln Sand
-; SPDX-License-Identifier: 0BSD
+; SPDX-License-Identifier: (0BSD OR AGPL-3.0-only)
 
 (check-same (Pair (-> Nat Nat) (-> Nat Nat)) (cons (the (-> Nat Nat) (lambda (x) x)) (the (-> Nat Nat) (lambda (y) y))) (cons (the (-> Nat Nat) (lambda (z) z)) (the (-> Nat Nat) (lambda (w) w))))

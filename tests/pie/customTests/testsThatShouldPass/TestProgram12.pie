@@ -1,4 +1,4 @@
 ; Copyright (C) 2025 Lincoln Sand
-; SPDX-License-Identifier: 0BSD
+; SPDX-License-Identifier: (0BSD OR AGPL-3.0-only)
 
 (check-same (-> Trivial Trivial) (the (-> Trivial Trivial) (lambda (x) sole)) (the (-> Trivial Trivial) (lambda (y) y)))

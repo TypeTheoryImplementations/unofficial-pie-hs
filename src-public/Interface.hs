@@ -21,8 +21,8 @@ typeCheckFile fp = do
         Left err -> putStr $ errorBundlePretty err
         Right decls ->
             case processFile decls of
-                Nothing -> putStrLn "Type Error."
-                Just _ -> putStrLn "Program Ok."
+                Left err -> putStrLn $ "Type Error. Error message: " <> err
+                Right _ -> putStrLn "Program Ok."
 
 typeCheckText :: T.Text -> IO ()
 typeCheckText src =
@@ -30,5 +30,5 @@ typeCheckText src =
         Left err -> putStr $ errorBundlePretty err
         Right decls ->
             case processFile decls of
-                Nothing -> putStrLn "Type Error."
-                Just _ -> putStrLn "Program Ok."
+                Left err -> putStrLn $ "Type Error. Error message: " <> err
+                Right _ -> putStrLn "Program Ok."
