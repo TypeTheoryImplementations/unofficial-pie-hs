@@ -9,6 +9,15 @@ import Text.Megaparsec (parse, errorBundlePretty)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 
+typeCheckInputImpl :: String -> T.Text -> IO ()
+typeCheckInputImpl message src = do
+    case parse parseTopLevel message src of
+        Left err -> putStr $ errorBundlePretty err
+        Right decls ->
+            case processFile decls of
+                Left err -> putStrLn $ "Type Error. Error message: " <> err
+                Right _ -> putStrLn "Program Ok."
+
 printAndCheckFile :: FilePath -> IO ()
 printAndCheckFile fp = do
     putStr $ fp <> ": "
@@ -17,18 +26,7 @@ printAndCheckFile fp = do
 typeCheckFile :: FilePath -> IO ()
 typeCheckFile fp = do
     src <- TIO.readFile fp
-    case parse parseTopLevel fp src of
-        Left err -> putStr $ errorBundlePretty err
-        Right decls ->
-            case processFile decls of
-                Nothing -> putStrLn "Type Error."
-                Just _ -> putStrLn "Program Ok."
+    typeCheckInputImpl fp src
 
 typeCheckText :: T.Text -> IO ()
-typeCheckText src =
-    case parse parseTopLevel "<input>" src of
-        Left err -> putStr $ errorBundlePretty err
-        Right decls ->
-            case processFile decls of
-                Nothing -> putStrLn "Type Error."
-                Just _ -> putStrLn "Program Ok."
+typeCheckText src = typeCheckInputImpl "<input>" src

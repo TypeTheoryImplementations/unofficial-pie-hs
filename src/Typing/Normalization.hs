@@ -3,6 +3,8 @@
 
 module Typing.Normalization (valOfClosure, doAp, doCar, indVecStepType, valInCtx, ctxToEnv, readBackType, readBack) where
 
+import qualified Data.Text as T
+
 import Common.Types
 import Common.Utils
 
@@ -24,7 +26,7 @@ doAp ratorVal randVal =
         LAM _ body -> valOfClosure body randVal
         NEU (PI _ argType body) ne ->
             NEU (valOfClosure body randVal) (N_Ap ne (THE argType randVal))
-        _ -> bug "There is a logic error in the implementation where `doAp` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doAp` has been called on an invalid target."
 
 doWhichNat :: Value -> Value -> Value -> Value -> Value
 doWhichNat targetVal baseTypeVal baseVal stepVal =
@@ -40,7 +42,7 @@ doWhichNat targetVal baseTypeVal baseVal stepVal =
                     (THE baseTypeVal baseVal)
                     (THE (PI "n" NAT (HO_CLOS (\_ -> baseTypeVal)))
                         stepVal))
-        _ -> bug "There is a logic error in the implementation where `doWhichNat` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doWhichNat` has been called on an invalid target."
 doIterNat :: Value -> Value -> Value -> Value -> Value
 doIterNat targetVal baseTypeVal baseVal stepVal =
     case targetVal of
@@ -56,7 +58,7 @@ doIterNat targetVal baseTypeVal baseVal stepVal =
                     (THE (PI "n" baseTypeVal (HO_CLOS (\_ -> baseTypeVal)))
                         stepVal)
                 )
-        _ -> bug "There is a logic error in the implementation where `doIterNat` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doIterNat` has been called on an invalid target."
 doRecNat :: Value -> Value -> Value -> Value -> Value
 doRecNat targetVal baseTypeVal baseVal stepVal =
     case targetVal of
@@ -71,7 +73,7 @@ doRecNat targetVal baseTypeVal baseVal stepVal =
                     (THE (PI "nMinus1" NAT (HO_CLOS (\_ ->
                             PI "ih" baseTypeVal (HO_CLOS (\_ -> baseTypeVal)))))
                         stepVal))
-        _ -> bug "There is a logic error in the implementation where `doRecNat` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doRecNat` has been called on an invalid target."
 doIndNat :: Value -> Value -> Value -> Value -> Value
 doIndNat targetVal motiveVal baseVal stepVal =
     case targetVal of
@@ -89,14 +91,14 @@ doIndNat targetVal motiveVal baseVal stepVal =
                             PI "ih" (doAp motiveVal nMinus1) (HO_CLOS (\_ ->
                                 (doAp motiveVal (ADD1 nMinus1)))))))
                         stepVal))
-        _ -> bug "There is a logic error in the implementation where `doIndNat` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doIndNat` has been called on an invalid target."
 
 doCar :: Value -> Value
 doCar pVal =
     case pVal of
         (CONS a _) -> a
         (NEU (SIGMA _ argType _) ne) -> NEU argType (N_Car ne)
-        _ -> bug "There is a logic error in the implementation where `doCar` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doCar` has been called on an invalid target."
 doCdr :: Value -> Value
 doCdr pVal =
     case pVal of
@@ -105,7 +107,7 @@ doCdr pVal =
             NEU 
                 (valOfClosure cdrType (doCar pVal))
                 (N_Cdr ne)
-        _ -> bug "There is a logic error in the implementation where `doCdr` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doCdr` has been called on an invalid target."
 
 doRecList :: Value -> Value -> Value -> Value -> Value
 doRecList targetVal baseTypeVal baseVal stepVal =
@@ -123,7 +125,7 @@ doRecList targetVal baseTypeVal baseVal stepVal =
                             PI "ih" baseTypeVal (HO_CLOS (\_ ->
                                 baseTypeVal)))))))
                         stepVal))
-        _ -> bug "There is a logic error in the implementation where `doRecList` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doRecList` has been called on an invalid target."
 doIndList :: Value -> Value -> Value -> Value -> Value
 doIndList targetVal motiveVal baseVal stepVal =
     case targetVal of
@@ -145,7 +147,7 @@ doIndList targetVal motiveVal baseVal stepVal =
                                     (doAp motiveVal (LIST_COLON_COLON h t))
                                 )))))))
                             stepVal))
-        _ -> bug "There is a logic error in the implementation where `doIndList` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doIndList` has been called on an invalid target."
 
 doIndAbsurd :: Value -> Value -> Value
 doIndAbsurd targetVal motiveVal =
@@ -153,7 +155,7 @@ doIndAbsurd targetVal motiveVal =
         (NEU ABSURD ne) ->
             NEU motiveVal
                 (N_Ind_Absurd ne (THE UNIVERSE motiveVal))
-        _ -> bug "There is a logic error in the implementation where `doIndAbsurd` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doIndAbsurd` has been called on an invalid target."
 
 doReplace :: Value -> Value -> Value -> Value
 doReplace targetVal motiveVal baseVal =
@@ -164,7 +166,7 @@ doReplace targetVal motiveVal baseVal =
                 (N_Replace ne
                     (THE (PI "x" eqTypeVal (HO_CLOS (\_ -> UNIVERSE))) motiveVal)
                     (THE (doAp motiveVal fromVal) baseVal))
-        _ -> bug "There is a logic error in the implementation where `doReplace` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doReplace` has been called on an invalid target."
 doTrans :: Value -> Value -> Value
 doTrans target1Val target2Val =
     case (target1Val, target2Val) of
@@ -185,7 +187,7 @@ doTrans target1Val target2Val =
             NEU
                 (EQUAL eqTypeVal fromVal toVal)
                 (N_Trans12 ne1 ne2)
-        _ -> bug "There is a logic error in the implementation where `doTrans` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doTrans` has been called on an invalid target."
 doCong :: Value -> Value -> Value -> Value
 doCong targetVal coDomainTypeVal funcVal =
     case targetVal of
@@ -194,14 +196,14 @@ doCong targetVal coDomainTypeVal funcVal =
             NEU
                 (EQUAL coDomainTypeVal (doAp funcVal fromVal) (doAp funcVal toVal))
                 (N_Cong ne (THE (PI "x" domainTypeVal (HO_CLOS (\_ -> coDomainTypeVal))) funcVal))
-        _ -> bug "There is a logic error in the implementation where `doCong` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doCong` has been called on an invalid target."
 doSymm :: Value -> Value
 doSymm targetVal =
     case targetVal of
         (SAME val) -> (SAME val)
         (NEU (EQUAL eqTypeVal fromVal toVal) ne) ->
             (NEU (EQUAL eqTypeVal toVal fromVal) (N_Symm ne))
-        _ -> bug "There is a logic error in the implementation where `doSymm` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doSymm` has been called on an invalid target."
 doIndEq :: Value -> Value -> Value -> Value
 doIndEq targetVal motiveVal baseVal =
     case targetVal of
@@ -219,7 +221,7 @@ doIndEq targetVal motiveVal baseVal =
                         (doAp (doAp motiveVal fromVal)
                             (SAME fromVal))
                         baseVal))
-        _ -> bug "There is a logic error in the implementation where `doIndEq` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doIndEq` has been called on an invalid target."
 
 doHead :: Value -> Value
 doHead targetVal =
@@ -227,14 +229,14 @@ doHead targetVal =
         (VEC_COLON_COLON hVal _) -> hVal
         (NEU (VEC elementTypeVal (ADD1 _)) ne) ->
             NEU elementTypeVal (N_Head ne)
-        _ -> bug "There is a logic error in the implementation where `doHead` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doHead` has been called on an invalid target."
 doTail :: Value -> Value
 doTail targetVal =
     case targetVal of
         (VEC_COLON_COLON _ tailVal) -> tailVal
         (NEU (VEC elementTypeVal (ADD1 lenMinus1Val)) ne) ->
             NEU (VEC elementTypeVal lenMinus1Val) (N_Tail ne)
-        _ -> bug "There is a logic error in the implementation where `doTail` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doTail` has been called on an invalid target."
 
 indVecStepType :: Value -> Value -> Value
 indVecStepType elementTypeVal motiveVal =
@@ -274,7 +276,7 @@ doIndVec lenVal vecVal motiveVal baseVal stepVal =
                         motiveVal)
                     (THE (doAp (doAp motiveVal ZERO) VECNIL) baseVal)
                     (THE (indVecStepType elementTypeVal motiveVal) stepVal))
-        _ -> bug "There is a logic error in the implementation where `doIndVec` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doIndVec` has been called on an invalid target."
 
 doIndEither :: Value -> Value -> Value -> Value -> Value
 doIndEither target motive l r =
@@ -296,10 +298,10 @@ doIndEither target motive l r =
                             (PI "x" rightTypeVal (HO_CLOS (\x ->
                                 doAp motive (RIGHT x))))
                             r))
-        _ -> bug "There is a logic error in the implementation where `doIndEither` has been called on an invalid target"
+        _ -> bug "There is a logic error in the implementation where `doIndEither` has been called on an invalid target."
 
 varVal :: Env -> Name -> Value
-varVal [] x = bug $ "Variable " <> x <> " not in the Env!"
+varVal [] x = bug $ "Variable " <> (T.unpack x) <> " not in the Env."
 varVal (ctxHead : ctxTail) x
     | fst ctxHead == x  = snd ctxHead
     | otherwise         = varVal ctxTail x
@@ -424,7 +426,7 @@ readBackType ctx (EITHER leftVal rightVal) =
     CoreEither (readBackType ctx leftVal) (readBackType ctx rightVal)
 readBackType ctx (NEU UNIVERSE ne) =
     readBackNeutral ctx ne
-readBackType _ _ = error "There is a logic error in the implementation where `readBackType` has been called on a `Value` that is not a type"
+readBackType _ _ = bug "There is a logic error in the implementation where `readBackType` has been called on a `Value` that is not a type."
 
 readBack :: Context -> Value -> Value -> CoreTerm
 readBack ctx UNIVERSE v = readBackType ctx v
@@ -458,7 +460,7 @@ readBack ctx (EITHER leftType _) (LEFT leftVal) =
 readBack ctx (EITHER _ rightType) (RIGHT rightVal) =
     CoreEitherRight (readBack ctx rightType rightVal)
 readBack ctx _ (NEU _ ne) = readBackNeutral ctx ne
-readBack _ _ _ = error "There is a logic error in the implementation where `readBack` has been called on a `Value` that is not a non-neutral non-type value"
+readBack _ _ _ = bug "There is a logic error in the implementation where `readBack` has been called on a `Value` that is not a non-neutral non-type value."
 
 readBackNeutral :: Context -> Neutral -> CoreTerm
 readBackNeutral ctx (N_Which_Nat target (THE baseTypeVal baseVal) (THE stepTypeVal stepVal)) =
@@ -509,4 +511,4 @@ readBackNeutral ctx (N_Ap target (THE argTypeVal argVal)) =
     CoreApplication (readBackNeutral ctx target) (readBack ctx argTypeVal argVal)
 readBackNeutral _ (N_Var x) =
     CoreVar x
-readBackNeutral _ _ = error "There is a logic error in the implementation where `readBackNeutral` has been called on a Neutral with an ill-formed type annotation"
+readBackNeutral _ _ = bug "There is a logic error in the implementation where `readBackNeutral` has been called on a Neutral with an ill-formed type annotation."

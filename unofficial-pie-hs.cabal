@@ -1,13 +1,13 @@
 cabal-version:      3.4
 
 name:               unofficial-pie-hs
-version:            1.1.0.0
+version:            2.0.0.0
 synopsis:           An unofficial implementation of Pie in Haskell
 description:        This is an easy to understand unofficial reimplementation of the Pie language from The Little Typer written in Haskell.
 category:           Text
 build-type:         Simple
 
--- All Haskell (.hs) sources in `src/` are AGPL-3.0-only.
+-- All Haskell (.hs) sources in `src/` and `src-public/` are AGPL-3.0-only.
 license:            AGPL-3.0-only
 license-file:       LICENSES/AGPL-3.0.txt
 
@@ -38,7 +38,7 @@ source-repository head
     location: https://github.com/TypeTheoryImplementations/unofficial-pie-hs
 
 common common-opts
-    default-language: GHC2024
+    default-language: Haskell2010
     default-extensions:
         OverloadedStrings
     ghc-options:
@@ -49,13 +49,11 @@ common common-opts
         -Wincomplete-uni-patterns
         -Wincomplete-record-updates
 
-library
+library internal
     import:           common-opts
     hs-source-dirs:   src
 
     exposed-modules:
-        Interface
-    other-modules:
         Common.Types
         Common.Utils
         Parser.Parser
@@ -70,6 +68,22 @@ library
         parser-combinators >= 1.0,
         containers >= 0.7,
         mtl >= 2.2.2
+
+library
+    import:           common-opts
+    hs-source-dirs:   src-public
+
+    exposed-modules:
+        Interface
+
+    build-depends:
+        base ^>=4.20.0.0,
+        text >= 1.2,
+        megaparsec >= 9.0,
+        parser-combinators >= 1.0,
+        containers >= 0.7,
+        mtl >= 2.2.2,
+        unofficial-pie-hs:internal
 
 executable unofficial-pie-hs
     import:           common-opts
@@ -95,7 +109,8 @@ test-suite unofficial-pie-hs-test
         text >= 1.2,
         megaparsec >= 9.0,
         hspec,
-        unofficial-pie-hs
+        unofficial-pie-hs,
+        unofficial-pie-hs:internal
 
     other-modules:
         ParsingSpec

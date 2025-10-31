@@ -5,6 +5,7 @@ module Typing.TypeChecker (processFile) where
 
 import Data.Maybe (fromMaybe)
 import Control.Monad (foldM)
+import qualified Data.Text as T
 
 import Common.Types
 import Common.Utils
@@ -12,22 +13,22 @@ import Typing.AlphaConversion
 import Typing.Normalization
 
 -- NOTE: Entry point into type checker
-processFile :: TopLevelDecls -> Maybe Context
+processFile :: TopLevelDecls -> Either Error Context
 processFile decls = foldM processDecl initCtx decls
 
-processDecl :: Context -> TopLevelDecl -> Maybe Context
+processDecl :: Context -> TopLevelDecl -> Either Error Context
 processDecl ctx (TopLevelClaim name ty) = addClaim ctx name ty
 processDecl ctx (TopLevelDef name e) = addDef ctx name e
 processDecl ctx (TopLevelCheckSame ty e1 e2) = checkSame ctx ty e1 e2 >> return ctx
 processDecl ctx (TopLevelFree e) = typingSynth ctx initRename e >> return ctx
 
-addClaim :: Context -> Name -> SyntacticTerm -> Maybe Context
+addClaim :: Context -> Name -> SyntacticTerm -> Either Error Context
 addClaim ctx x ty = do
     _ <- notUsed ctx x
     tyOut <- isType ctx initRename ty
     return ((x, Claim (valInCtx ctx tyOut)):ctx)
 
-addDef :: Context -> Name -> SyntacticTerm -> Maybe Context
+addDef :: Context -> Name -> SyntacticTerm -> Either Error Context
 addDef ctx x expr = do
     typeVal <- getClaim ctx x
     exprOut <- typingCheck ctx initRename expr typeVal
@@ -42,7 +43,7 @@ removeClaim x ((y, b):ctxTail)
             _ -> bug "There is a logic error in the implementation where `removeClaim` has been called with duplicate definitions in the context"
     | otherwise = (y, b) : removeClaim x ctxTail
 
-checkSame :: Context -> SyntacticTerm -> SyntacticTerm -> SyntacticTerm -> Maybe ()
+checkSame :: Context -> SyntacticTerm -> SyntacticTerm -> SyntacticTerm -> Either Error ()
 checkSame ctx ty a b = do
     tyOut <- isType ctx initRename ty
     let tyVal = valInCtx ctx tyOut
@@ -52,17 +53,17 @@ checkSame ctx ty a b = do
     let bVal = valInCtx ctx bOut
     convert ctx tyVal aVal bVal
 
-notUsed :: Context -> Name -> Maybe ()
-notUsed [] _ = Just ()
+notUsed :: Context -> Name -> Either Error ()
+notUsed [] _ = return ()
 notUsed ((y, _):ctxTail) x =
-    if x == y then Nothing else notUsed ctxTail x
+    if x == y then Left $ "The name " <> (T.unpack x) <> " is already used in the context." else notUsed ctxTail x
 
-getClaim :: Context -> Name -> Maybe Value
-getClaim [] _ = Nothing
+getClaim :: Context -> Name -> Either Error Value
+getClaim [] x = Left $ "Claim " <> (T.unpack x) <> " not found in context."
 getClaim ((y, Def _ _):_) x
-    | x == y = Nothing -- x is already defined
+    | x == y = Left $ (T.unpack x) <> " is already defined in the context." -- x is already defined
 getClaim ((y, Claim typeVal):_) x
-    | x == y = Just typeVal
+    | x == y = return typeVal
 getClaim (_:ctxTail) x = getClaim ctxTail x
 
 bindVal :: Context -> Name -> Value -> Value -> Context
@@ -164,7 +165,7 @@ occurringNames _ =
 occurringBinderNames :: (Name, SyntacticTerm) -> [Name]
 occurringBinderNames (x, t) = x : occurringNames t
 
-typingSynth :: Context -> Renaming -> SyntacticTerm -> Maybe The
+typingSynth :: Context -> Renaming -> SyntacticTerm -> Either Error The
 typingSynth ctx r (SrcVar varName) = do -- Hypothesis
     let realVarName = rename r varName
     varTypeVal <- typingLookup ctx realVarName
@@ -176,30 +177,30 @@ typingSynth ctx r (SrcCar pr) = do -- SigmaE-1
     case valInCtx ctx prType of
         (SIGMA _ carType _) ->
             return $ The (readBackType ctx carType) (CoreCar prOut)
-        _ -> Nothing
+        _ -> Left $ "car expects a target of type SIGMA, instead got: " <> (show prType) <> "."
 typingSynth ctx r (SrcCdr pr) = do -- SigmaE-2
     (The prType prOut) <- typingSynth ctx r pr
     case valInCtx ctx prType of
         (SIGMA _ _ clos) ->
             -- NOTE: The below line is effectively verbatim the body of `doCdr` in `Normalization.hs`
             return $ The (readBackType ctx (valOfClosure clos (doCar (valInCtx ctx prOut)))) (CoreCdr prOut)
-        _ -> Nothing
+        _ -> Left $ "cdr expects a target of type SIGMA, instead got: " <> (show prType) <> "."
 typingSynth ctx r (SrcApplication func [arg]) = do -- FunE-1
     (The funcType funcOut) <- typingSynth ctx r func
     case valInCtx ctx funcType of
-        (PI _ carType clos) -> do
-            argOut <- typingCheck ctx r arg carType
+        (PI _ argType clos) -> do
+            argOut <- typingCheck ctx r arg argType
             let argOutVal = valInCtx ctx argOut
             return $ The (readBackType ctx (valOfClosure clos argOutVal)) (CoreApplication funcOut argOut)
-        _ -> Nothing
+        _ -> Left $ "Function application expects a function of type PI, instead got: " <> (show funcType) <> "."
 typingSynth ctx r (SrcApplication func args) = do -- FunE-2
     (The appFuncType appFuncOut) <- typingSynth ctx r (SrcApplication func (init args))
     case valInCtx ctx appFuncType of
-        (PI _ carType clos) -> do
-            argOut <- typingCheck ctx r (last args) carType
+        (PI _ argType clos) -> do
+            argOut <- typingCheck ctx r (last args) argType
             let argOutVal = valInCtx ctx argOut
             return $ The (readBackType ctx (valOfClosure clos argOutVal)) (CoreApplication appFuncOut argOut)
-        _ -> Nothing
+        _ -> Left $ "Function application expects a function of type PI, instead got: " <> (show appFuncType) <> "."
 typingSynth _ _ SrcNatZero = -- NatI-1
     return $ The CoreNat CoreNatZero
 typingSynth ctx r (SrcNatAdd1 n) = do -- NatI-2
@@ -226,7 +227,7 @@ typingSynth ctx r (SrcRecNat target base step) = do -- NatE-3
     targetOut <- typingCheck ctx r target NAT
     (The baseType baseOut) <- typingSynth ctx r base
     let nMinus1 = fresh ctx "freshMinus1"
-        old     = fresh ctx "fresh"
+        old     = fresh ctx "old"
     stepOut <- typingCheck ctx r step (valInCtx ctx (CorePi nMinus1 CoreNat (CorePi old baseType baseType)))
     return $ The baseType (CoreRecNat targetOut (The baseType baseOut) stepOut)
 typingSynth ctx r (SrcIndNat target motive base step) = do -- NatE-4
@@ -248,7 +249,7 @@ typingSynth ctx r (SrcRecList target base step) = do -- ListE-1
             let baseTypeVal = valInCtx ctx baseType
             stepOut <- typingCheck ctx r step (PI "e" elementType (HO_CLOS (\_ -> PI "es" (LIST elementType) (HO_CLOS (\_ -> PI "ih" baseTypeVal (HO_CLOS (\_ -> baseTypeVal)))))))
             return $ The baseType (CoreRecList targetOut (The baseType baseOut) stepOut)
-        _ -> Nothing
+        _ -> Left $ "rec-List expects a target of type LIST, instead got: " <> (show targetType) <> "."
 typingSynth ctx r (SrcIndList target motive base step) = do -- ListE-2
     (The targetType targetOut) <- typingSynth ctx r target
     case valInCtx ctx targetType of
@@ -258,19 +259,19 @@ typingSynth ctx r (SrcIndList target motive base step) = do -- ListE-2
             baseOut <- typingCheck ctx r base (doAp motiveOutVal NIL)
             stepOut <- typingCheck ctx r step (PI "e" elementType (HO_CLOS (\e -> PI "es" (LIST elementType) (HO_CLOS (\es -> PI "ih" (doAp motiveOutVal es) (HO_CLOS (\_ -> doAp motiveOutVal (LIST_COLON_COLON e es))))))))
             return $ The (CoreApplication motiveOut targetOut) (CoreIndList targetOut motiveOut baseOut stepOut)
-        _ -> Nothing
+        _ -> Left $ "ind-List expects a target of type LIST, instead got: " <> (show targetType) <> "."
 typingSynth ctx r (SrcHead es) = do -- VecE-1
     (The esTypeOut esOut) <- typingSynth ctx r es
     case valInCtx ctx esTypeOut of
         (VEC elementTypeVal (ADD1 _)) ->
             return $ The (readBackType ctx elementTypeVal) (CoreHead esOut)
-        _ -> Nothing
+        _ -> Left $ "head expects a target of type VEC, instead got: " <> (show esTypeOut) <> "."
 typingSynth ctx r (SrcTail es) = do -- VecE-2
     (The esTypeOut esOut) <- typingSynth ctx r es
     case valInCtx ctx esTypeOut of
         (VEC elementTypeVal (ADD1 lenMinus1)) ->
             return $ The (CoreVec (readBackType ctx elementTypeVal) (readBack ctx NAT lenMinus1)) (CoreTail esOut)
-        _ -> Nothing
+        _ -> Left $ "tail expects a target of type VEC, instead got: " <> (show esTypeOut) <> "."
 typingSynth ctx r (SrcIndVec len target motive base step) = do -- VecE-3
     lenOut <- typingCheck ctx r len NAT
     let lenOutVal = valInCtx ctx lenOut
@@ -283,7 +284,7 @@ typingSynth ctx r (SrcIndVec len target motive base step) = do -- VecE-3
             baseOut <- typingCheck ctx r base (doAp (doAp motiveOutVal ZERO) VECNIL)
             stepOut <- typingCheck ctx r step (indVecStepType elementTypeVal motiveOutVal)
             return $ The (CoreApplication motiveOut lenOut) (CoreIndVec lenOut vecOut motiveOut baseOut stepOut)
-        _ -> Nothing
+        _ -> Left $ "ind-Vec expects a target of type VEC, instead got: " <> (show vecType) <> "."
 typingSynth ctx r (SrcEqReplace target motive base) = do -- EqE-1
     (The targetType targetOut) <- typingSynth ctx r target
     case valInCtx ctx targetType of
@@ -292,7 +293,7 @@ typingSynth ctx r (SrcEqReplace target motive base) = do -- EqE-1
             let motiveOutVal = valInCtx ctx motiveOut
             baseOut <- typingCheck ctx r base (doAp motiveOutVal fromVal)
             return $ The (readBackType ctx (doAp motiveOutVal toVal)) (CoreReplace targetOut motiveOut baseOut)
-        _ -> Nothing
+        _ -> Left $ "replace expects a target of type EQUAL, instead got: " <> (show targetType) <> "."
 typingSynth ctx r (SrcEqCong target func) = do -- EqE-2
     (The targetType targetOut) <- typingSynth ctx r target
     (The funcType funcOut) <- typingSynth ctx r func
@@ -311,13 +312,13 @@ typingSynth ctx r (SrcEqCong target func) = do -- EqE-2
             return $ The
                 (CoreEq coDomainTypeOut (readBack ctx coDomainTypeVal (doAp funcVal fromVal)) (readBack ctx coDomainTypeVal (doAp funcVal toVal)))
                 (CoreCong targetOut coDomainTypeOut funcOut)
-        _ -> Nothing
+        _ -> Left $ "cong expects a target of type EQUAL and a function of type PI, instead got: " <> (show targetType) <> " and " <> (show funcType) <> "."
 typingSynth ctx r (SrcEqSymm eqExpr) = do -- EqE-3
     (The eqExprType eqExprOut) <- typingSynth ctx r eqExpr
     case valInCtx ctx eqExprType of
         (EQUAL eqTypeVal fromVal toVal) ->
             return $ The (readBackType ctx (EQUAL eqTypeVal toVal fromVal)) (CoreSymm eqExprOut)
-        _ -> Nothing
+        _ -> Left $ "symm expects a target of type EQUAL, instead got: " <> (show eqExprType) <> "."
 typingSynth ctx r (SrcEqTrans t1 t2) = do -- EqE-4
     (The t1Type t1Out) <- typingSynth ctx r t1
     (The t2Type t2Out) <- typingSynth ctx r t2
@@ -326,7 +327,7 @@ typingSynth ctx r (SrcEqTrans t1 t2) = do -- EqE-4
             _ <- sameType ctx eqType1Val eqType2Val
             _ <- convert ctx eqType1Val midVal mid2Val
             return $ The (readBackType ctx (EQUAL eqType1Val fromVal toVal)) (CoreTrans t1Out t2Out)
-        _ -> Nothing
+        _ -> Left $ "trans expects two targets of type EQUAL, instead got: " <> (show t1Type) <> " and " <> (show t2Type) <> "."
 typingSynth ctx r (SrcEqIndEq target motive base) = do -- EqE-5: Based Path Induction (aka: Parameter-variant of the J-eliminator)
     (The targetType targetOut) <- typingSynth ctx r target
     case valInCtx ctx targetType of
@@ -335,7 +336,7 @@ typingSynth ctx r (SrcEqIndEq target motive base) = do -- EqE-5: Based Path Indu
             let motiveOutVal = valInCtx ctx motiveOut
             baseOut <- typingCheck ctx r base (doAp (doAp motiveOutVal fromVal) (SAME fromVal))
             return $ The (readBackType ctx (doAp (doAp motiveOutVal toVal) (valInCtx ctx targetOut))) (CoreIndEq targetOut motiveOut baseOut)
-        _ -> Nothing
+        _ -> Left $ "ind-= expects a target of type EQUAL, instead got: " <> (show targetType) <> "."
 typingSynth ctx r (SrcIndEither target motive baseLeft baseRight) = do -- EitherE
     (The targetType targetOut) <- typingSynth ctx r target
     case valInCtx ctx targetType of
@@ -345,7 +346,7 @@ typingSynth ctx r (SrcIndEither target motive baseLeft baseRight) = do -- Either
             leftOut <- typingCheck ctx r baseLeft (PI "x" leftVal (HO_CLOS (\x -> doAp motiveOutVal (LEFT x))))
             rightOut <- typingCheck ctx r baseRight (PI "x" rightVal (HO_CLOS (\x -> doAp motiveOutVal (RIGHT x))))
             return $ The (CoreApplication motiveOut targetOut) (CoreIndEither targetOut motiveOut leftOut rightOut)
-        _ -> Nothing
+        _ -> Left $ "ind-Either expects a target of type EITHER, instead got: " <> (show targetType) <> "."
 typingSynth _ _ SrcTrivialSole = -- TrivialI
     return $ The CoreTrivial CoreTrivialSole
 typingSynth ctx r (SrcIndAbsurd target motive) = do -- AbsurdE
@@ -427,9 +428,9 @@ typingSynth ctx r (SrcThe t e) = do
     tOut <- isType ctx r t
     eOut <- typingCheck ctx r e (valInCtx ctx tOut)
     return $ The tOut eOut
-typingSynth _ _ _ = Nothing
+typingSynth _ _ src = Left $ "Could not synth a type for term " <> (show src) <> "."
 
-isType :: Context -> Renaming -> SyntacticTerm -> Maybe CoreTerm
+isType :: Context -> Renaming -> SyntacticTerm -> Either Error CoreTerm
 isType _ _ SrcAtom = -- AtomF
     return $ CoreAtom
 isType ctx r (SrcSigma [(carName, carType)] cdrType) = do -- SigmaF-1
@@ -502,7 +503,7 @@ isType _ _ SrcU = -- EL
     return $ CoreU
 isType ctx r expr = typingCheck ctx r expr UNIVERSE
 
-typingCheck :: Context -> Renaming -> SyntacticTerm -> Value -> Maybe CoreTerm
+typingCheck :: Context -> Renaming -> SyntacticTerm -> Value -> Either Error CoreTerm
 typingCheck ctx r (SrcCons car cdr) (SIGMA _ carType cdrType) = do -- SigmaI
     carOut <- typingCheck ctx r car carType
     cdrOut <- typingCheck ctx r cdr (valOfClosure cdrType (valInCtx ctx carOut))
@@ -511,8 +512,8 @@ typingCheck ctx r (SrcLambda [argName] lambdaBody) (PI _ argType returnType) = d
     let newArgName = fresh ctx argName
     returnOut <- typingCheck (bindFree ctx newArgName argType) (extendRenaming r argName newArgName) lambdaBody (valOfClosure returnType (NEU argType (N_Var newArgName)))
     return $ CoreLambda newArgName returnOut
-typingCheck ctx r (SrcLambda (argName:otherArgNames) lambdaBody) (PI piArgName piArgType piReturnType) = -- FunI-2
-    typingCheck ctx r (SrcLambda [argName] (SrcLambda otherArgNames lambdaBody)) (PI piArgName piArgType piReturnType)
+typingCheck ctx r (SrcLambda (argName:otherArgNames) lambdaBody) (PI argNamePi argTypePi returnTypePi) = -- FunI-2
+    typingCheck ctx r (SrcLambda [argName] (SrcLambda otherArgNames lambdaBody)) (PI argNamePi argTypePi returnTypePi)
 typingCheck _ _ SrcListNil (LIST _) = -- ListI-1
     return $ CoreListNil
 typingCheck _ _ SrcVecNil (VEC _ ZERO) = -- VecI-1
@@ -538,14 +539,14 @@ typingCheck ctx r expr ty = do
     _ <- sameType ctx (valInCtx ctx exprTypeOut) ty
     return $ exprOut
 
-convert :: Context -> Value -> Value -> Value -> Maybe ()
+convert :: Context -> Value -> Value -> Value -> Either Error ()
 convert ctx typeVal aVal bVal =
     let a = readBack ctx typeVal aVal
         b = readBack ctx typeVal bVal
-    in if alphaEquiv a b then Just () else Nothing
+    in if alphaEquiv a b then return () else Left $ (show a) <> " and " <> (show b) <> " are not the same " <> (show $ readBackType ctx typeVal) <> "."
 
-sameType :: Context -> Value -> Value -> Maybe ()
+sameType :: Context -> Value -> Value -> Either Error ()
 sameType ctx given expected =
     let givenE = readBackType ctx given
         expectedE = readBackType ctx expected
-    in if alphaEquiv givenE expectedE then Just () else Nothing
+    in if alphaEquiv givenE expectedE then return () else Left $ (show givenE) <> " and " <> (show expectedE) <> " are not the same type."
