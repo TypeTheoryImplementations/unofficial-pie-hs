@@ -283,7 +283,7 @@ typingSynth ctx r (SrcIndVec len target motive base step) = do -- VecE-3
             let motiveOutVal = valInCtx ctx motiveOut
             baseOut <- typingCheck ctx r base (doAp (doAp motiveOutVal ZERO) VECNIL)
             stepOut <- typingCheck ctx r step (indVecStepType elementTypeVal motiveOutVal)
-            return $ The (CoreApplication motiveOut lenOut) (CoreIndVec lenOut vecOut motiveOut baseOut stepOut)
+            return $ The (CoreApplication (CoreApplication motiveOut lenOut) vecOut) (CoreIndVec lenOut vecOut motiveOut baseOut stepOut)
         _ -> Left $ "ind-Vec expects a target of type VEC, instead got: " <> (show vecType) <> "."
 typingSynth ctx r (SrcEqReplace target motive base) = do -- EqE-1
     (The targetType targetOut) <- typingSynth ctx r target
