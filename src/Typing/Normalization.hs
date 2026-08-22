@@ -448,7 +448,7 @@ readBack _ TRIVIAL _ = CoreTrivialSole -- NOTE: η-expansion
 readBack _ (LIST _) NIL = CoreListNil
 readBack ctx (LIST elementType) (LIST_COLON_COLON h t) =
     CoreListColonColon (readBack ctx elementType h) (readBack ctx (LIST elementType) t)
--- NOTE: This is apparently half of an η law with the other half being in `alphaEquiv`???
+-- NOTE: This is half of an η law with the other half being in `alphaEquiv`
 readBack ctx ABSURD (NEU _ ne) =
     CoreThe $ The CoreAbsurd (readBackNeutral ctx ne)
 readBack ctx (EQUAL eqType _ _) (SAME v) = CoreEqSame (readBack ctx eqType v)

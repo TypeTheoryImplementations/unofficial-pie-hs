@@ -304,7 +304,8 @@ typingSynth ctx r (SrcEqCong target func) = do -- EqE-2
 --  The inference rule requires that the codomain type of the pi type be independent of the domain parameter (i.e. be an arrow type),
 --  but since there is no easy way to check independence, it is instead sufficient to check that the endpoints are within the same fiber.
 --  In other words, since `cong` is not dependent, the below check ensures that `f(from)` and `f(to)` end up being inhabitants of the same type.
---  As far as I can tell, the reference implementation is thus unsound and does not match the inference rule contained in the book.
+--  It is unclear to me if the reference implementation is thus unsound or if this is just an overly cautious check since to use `cong`,
+--  you already need an identity proof.
             let coDomainTypeVal = valOfClosure clos fromVal
             _ <- sameType ctx coDomainTypeVal (valOfClosure clos toVal)
             let coDomainTypeOut = readBackType ctx coDomainTypeVal

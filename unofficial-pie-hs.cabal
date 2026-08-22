@@ -16,7 +16,7 @@ maintainer:         sandlincoln@gmail.com
 
 -- Ensure .pie tests are included in source tarballs.
 extra-source-files:
-    tests/pie/*.pie
+    tests/pie/**/*.pie
 
 -- Include CC-BY text for .pie tests
 extra-doc-files:
@@ -25,10 +25,6 @@ extra-doc-files:
     LICENSES/AGPL-3.0.txt
     -- covers tests (.pie):
     LICENSES/CC-BY-4.0.txt
-
--- Install .pie tests as data so test code can find them via Paths_*.
-data-files:
-    tests/pie/*.pie
 
 tested-with:
     GHC == 9.10.*
