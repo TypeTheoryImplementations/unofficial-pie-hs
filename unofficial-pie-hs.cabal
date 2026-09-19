@@ -25,6 +25,8 @@ extra-doc-files:
     LICENSES/AGPL-3.0.txt
     -- covers tests (.pie):
     LICENSES/CC-BY-4.0.txt
+    -- covers megaparsec:
+    LICENSES/LICENSE-megaparsec.md
 
 tested-with:
     GHC == 9.10.*

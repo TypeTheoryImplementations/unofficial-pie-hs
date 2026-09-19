@@ -34,6 +34,8 @@ Regarding code within `tests/pie/`, any files **not** beginning with `TestProgra
 
 Copies of both licenses can be found in the `LICENSES/` directory.
 
+This code also uses the library [megaparsec](https://github.com/mrkkrp/megaparsec). In compliance with its license (BSD 2-clause), a copy of megaparsec's license can be found at `LICENSES/LICENSE-megaparsec.md`.
+
 Additionally, older commits have a placeholder auto-generated `LICENSE` file that uses BSD 3-clause. These versions were never distributed prior to the commit that adds the proper licenses. As such, please disregard prior commits that are licensed improperly, not just because they're buggy and incorrect, but because they are retroactively licensed the same as this commit.
 
 ## How to use?
