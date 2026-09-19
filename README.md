@@ -30,7 +30,7 @@ This was my first foray into static type systems after implementing the Simply-T
 ## What is the license for this code?
 
 This is **not** a clean-room implementation. As such, I have licensed my code under the same license as the reference implementation of Pie: [the GNU Affero General Public License version 3](https://www.gnu.org/licenses/agpl-3.0). All Haskell code in `src/` and `src-public` is licensed as such.
-Regarding code within `tests/pie/`, any files **not** beginning with `TestProgram` and/or located within the `bookTests/` directory are derivatives of code examples from *The Little Typer* and are thus licensed under the [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.en) license. All other code within this repository is dual-licensed as both public domain (BSD 0-Clause) and AGPL-3.0 unless otherwise stated to the fullest extent of the law. All files should have a copyright notice at the top specifying the license.
+Regarding code within `tests/pie/`, any files located within the `bookTests/` directory and/or **not** beginning with `TestProgram` are derivatives of code examples from *The Little Typer* and are thus licensed under the [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.en) license. All other test code is dual-licensed as both BSD 0-Clause and AGPL-3.0 unless otherwise stated to the fullest extent of the law. All files should have a copyright notice at the top specifying the license.
 
 Copies of both licenses can be found in the `LICENSES/` directory.
 
